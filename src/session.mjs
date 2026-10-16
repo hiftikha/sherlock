@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { analyze } from './findings.mjs';
+import { markSummaries } from './interaction.mjs';
 
 export class Session extends EventEmitter {
   constructor({ kind, target, platform, meta = {} }) {
@@ -22,6 +23,7 @@ export class Session extends EventEmitter {
     this.stacks = null;
     this.web = null;
     this.mobile = null;
+    this.interactions = [];
     this.capabilities = {};
     this.status = 'starting';
     this.output = [];
@@ -50,6 +52,14 @@ export class Session extends EventEmitter {
     this.marks.push(m);
     this.emit('mark', m);
     return m;
+  }
+
+  addInteraction(record) {
+    this.interactions.push(record);
+    if (this.interactions.length > 200) this.interactions.shift();
+    this.emit('interaction', record);
+    this.refreshFindings();
+    return record;
   }
 
   phase(name, start, end, detail) {
@@ -164,6 +174,8 @@ export class Session extends EventEmitter {
       stacks: this.stacks,
       web: this.web,
       mobile: this.mobile,
+      interactions: this.interactions,
+      markSummaries: markSummaries(this.marks, this.samples),
       error: this.error,
       summary: this.summary(),
       samples: this.samples,

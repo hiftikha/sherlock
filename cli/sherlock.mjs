@@ -5,7 +5,8 @@ import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { VERSION } from '../src/version.mjs';
-import { c, SEVERITY } from '../src/term.mjs';
+import { c, SEVERITY, SEGMENT_COLORS, segmentBar } from '../src/term.mjs';
+import { SEGMENTS } from '../src/parse/trace.mjs';
 import { formatBytes, formatMs, which } from '../src/util.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,6 +20,7 @@ ${c.bold('Usage')}
   sherlock launch [opts] -- <cmd>  launch an app and measure startup, then watch it live
   sherlock attach <pid|name>       attach to a running process and watch it live
   sherlock web <url>               page startup in headless Chrome
+  sherlock interact <url> [opts]   click or type on a page and break the interaction down
   sherlock ios <bundle-id>         cold launch in the booted iOS Simulator
   sherlock android <pkg[/act]>     cold start on a device or emulator over adb
   sherlock detect [dir]            what is this project and how would Sherlock run it
@@ -32,6 +34,14 @@ ${c.bold('Options')}
   --ready-url <url>     ready when the URL answers below 500
   --seconds <n>         how long attach watches before printing (default: until Ctrl-C)
   --throttle <n>        web: slow the CPU by n×
+  --click <selector>    interact: element to click
+  --at <x,y>            interact: viewport point to click
+  --key <key>           interact: key to press (in --click's element if given)
+  --label <name>        interact: name of the interaction
+  --done <selector>     interact: element that appears when it has finished
+  --repeat <n>          interact: run it n times
+  --stacks              interact: also sample JS call stacks
+  --mark-stacks <s>     launch/attach: sample call stacks for s seconds after each mark (macOS)
   --no-stacks           skip the startup call-stack pass (macOS)
   --no-ui               don't open the dashboard
   --exit                stop after startup instead of watching live
@@ -40,7 +50,7 @@ ${c.bold('Options')}
   -h, --help            this help
   -v, --version         version
 
-Docs: https://skills.wheresryan.sh/sherlock`;
+Docs: https://haroonarchive.com/sherlock`;
 
 function parseArgs(argv) {
   const out = { _: [], rest: null };
@@ -54,7 +64,7 @@ function parseArgs(argv) {
     else if (a.startsWith('--')) {
       const [k, v] = a.slice(2).split('=');
       const next = argv[i + 1];
-      const flag = ['json', 'exit', 'yes', 'help', 'version'].includes(k);
+      const flag = ['json', 'exit', 'yes', 'help', 'version', 'stacks'].includes(k);
       if (v !== undefined) out[k] = v;
       else if (flag || next === undefined || next.startsWith('-')) out[k] = true;
       else {
@@ -88,6 +98,11 @@ function printDigest(d) {
     line('transfer', `${formatBytes(d.web.transfer?.bytes)} in ${d.web.transfer?.requests} requests`);
   }
   if (d.notMeasured) line('not measured', c.dim(d.notMeasured.join('; ')));
+  if (d.perInteraction && !d.interactions) {
+    console.log(`\n  ${c.bold('Interactions')}`);
+    for (const p of d.perInteraction.slice(-8)) console.log(`    ${p}`);
+  }
+  if (d.raw?.interactions?.length) printInteractions(d.raw.interactions);
   if (Array.isArray(d.hotFunctions)) {
     console.log(`\n  ${c.bold('Hot functions')}`);
     for (const h of d.hotFunctions.slice(0, 6)) console.log(`    ${h}`);
@@ -101,6 +116,32 @@ function printDigest(d) {
     });
   }
   if (d.dashboard) console.log(`\n  ${c.dim('dashboard')}  ${c.amber(d.dashboard)}`);
+}
+
+function printInteractions(records) {
+  console.log(`\n  ${c.bold('Interactions')}`);
+  for (const r of records.slice(-8)) {
+    if (r.kind === 'native') {
+      const top = r.stacks?.available ? r.stacks.hot[0] : null;
+      console.log(`    ${c.bold(r.label)} ${c.dim(`@ ${formatMs(r.t)}`)}  ${top ? `hottest ${top.symbol} ${(top.pctOfActive * 100).toFixed(0)}%` : c.dim(r.stacks?.reason ?? 'sampling…')}`);
+      continue;
+    }
+    if (!r.available) {
+      console.log(`    ${c.bold(r.label)}  ${c.red(r.reason)}`);
+      continue;
+    }
+    console.log(`    ${c.bold(r.label.padEnd(16))} ${segmentBar(r.segments, r.totalMs)} ${c.bold(formatMs(r.totalMs))} ${c.dim(r.frameShown ? 'to frame shown' : 'to last work')}`);
+    const parts = Object.entries(r.totals)
+      .filter(([, v]) => v >= 0.5)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${c.rgb(...SEGMENT_COLORS[k])('■')} ${r.slowest?.key === k ? c.bold(`${segLabel(r, k)} ${formatMs(v)}`) : c.dim(`${segLabel(r, k)} ${formatMs(v)}`)}`);
+    console.log(`    ${' '.repeat(16)} ${parts.join('  ')}`);
+    for (const n of r.notes ?? []) console.log(c.dim(`    ${' '.repeat(16)} ${n}`));
+  }
+}
+
+function segLabel(r, key) {
+  return SEGMENTS[key] ?? key;
 }
 
 async function watchLive(session, args) {
@@ -119,7 +160,7 @@ async function finish(session, args, ui) {
   const d = digest(session, { dashboardUrl: ui?.url });
   if (args.json) console.log(JSON.stringify({ ...d, report: paths }, null, 2));
   else {
-    printDigest({ ...d, dashboard: undefined });
+    printDigest({ ...d, dashboard: undefined, raw: { interactions: session.interactions } });
     console.log(`\n  ${c.dim('report')}     ${paths.htmlPath}`);
   }
   await closeDashboards();
@@ -145,6 +186,15 @@ async function liveLoop(session, args) {
     if (!label) break;
     const m = session.mark(label, { source: 'cli' });
     console.log(c.amber(`  ▸ marked "${m.label}" at ${formatMs(m.t)}`));
+    if (args['mark-stacks']) {
+      const { captureMarkStacks } = await import('../src/interaction.mjs');
+      const seconds = Number(args['mark-stacks']) || 2;
+      console.log(c.dim(`    sampling call stacks for ${seconds} s; perform the interaction now`));
+      captureMarkStacks(session, m, seconds).then((r) => {
+        const top = r.stacks?.available ? r.stacks.hot.slice(0, 3).map((h) => `${(h.pctOfActive * 100).toFixed(0)}% ${h.symbol}`).join(' · ') : r.stacks?.reason;
+        console.log(c.dim(`    "${m.label}" stacks: ${top}`));
+      });
+    }
   }
   clearTimeout(timer);
   rl.close();
@@ -202,6 +252,38 @@ async function cmdOneShot(kind, args) {
   const d = digest(session);
   if (args.json) return console.log(JSON.stringify({ ...d, report: paths }, null, 2));
   printDigest(d);
+  console.log(`\n  ${c.dim('report')}     ${paths.htmlPath}`);
+  if (args.ui !== false) {
+    const ui = await startDashboard(session.toJSON(), { open: true });
+    console.log(`  ${c.dim('dashboard')}  ${c.amber(ui.url)}  ${c.dim('(Ctrl-C to quit)')}`);
+    await new Promise(() => {});
+  }
+}
+
+async function cmdInteract(args) {
+  const url = args._[1];
+  if (!url || (!args.click && !args.at && !args.key)) throw new Error('Usage: sherlock interact <url> --click <selector> | --at <x,y> | --key <key> [--label name] [--done <selector>] [--repeat n]');
+  const { profileWeb, interactWeb } = await import('../src/platform/web.mjs');
+  const { digest } = await import('../src/tools.mjs');
+  const [x, y] = args.at ? String(args.at).split(',').map(Number) : [];
+  const label = typeof args.label === 'string' ? args.label : (args.click ?? args.key ?? 'interaction');
+  if (!args.json) console.log(c.dim(`  opening ${url}…`));
+  const session = await profileWeb({ url, cpuThrottle: args.throttle, keepOpen: true });
+  try {
+    const n = Math.min(10, Math.max(1, Number(args.repeat) || 1));
+    for (let k = 0; k < n; k++) {
+      if (!args.json) console.log(c.dim(`  ${label}${n > 1 ? ` (${k + 1}/${n})` : ''}…`));
+      await interactWeb(session, { label, selector: args.click, x, y, key: args.key, doneSelector: args.done, timeoutMs: args.timeout ? Number(args.timeout) : undefined, stacks: !!args.stacks });
+      if (k + 1 < n) await new Promise((r) => setTimeout(r, 300));
+    }
+  } finally {
+    session.stop();
+  }
+  const { writeReport, startDashboard } = await import('../src/server.mjs');
+  const paths = await writeReport(session, resolve(process.cwd(), '.sherlock'));
+  const d = digest(session);
+  if (args.json) return console.log(JSON.stringify({ ...d, report: paths }, null, 2));
+  printDigest({ ...d, raw: { interactions: session.interactions } });
   console.log(`\n  ${c.dim('report')}     ${paths.htmlPath}`);
   if (args.ui !== false) {
     const ui = await startDashboard(session.toJSON(), { open: true });
@@ -338,6 +420,8 @@ async function main() {
     case 'ios':
     case 'android':
       return cmdOneShot(cmd, args);
+    case 'interact':
+      return cmdInteract(args);
     case 'detect':
       return cmdDetect(args);
     case 'report':

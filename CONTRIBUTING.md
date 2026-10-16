@@ -16,7 +16,7 @@ You need Node 22 or later. The Rust test needs `cargo`, the web test needs Chrom
 
 - **No runtime dependencies for profiling.** Everything under `src/` except `agent.mjs` uses Node's built-in modules only, so the Claude Code plugin runs with no install step. Keep it that way.
 - **Never report a guess as a measurement.** If a platform can't measure something, set the capability to `null` with a reason; the dashboard and the agent both show it as unavailable.
-- **Parsers are pure.** Each tool's output is parsed by a function in `src/parse/` with a unit test against real output saved in `test/fixtures/`. When you add a platform, add the parser, a fixture and a test first.
+- **Parsers are pure.** Each tool's output is parsed by a function in `src/parse/` with a unit test against real output saved in `test/fixtures/`. When you add a platform, add the parser, a fixture and a test first. The DevTools trace fixtures in `test/fixtures/web/` are recorded with `node scripts/record-trace-fixture.mjs`; a raw trace from anywhere else (CI uploads one when a web interaction test fails) is trimmed to a fixture with `node scripts/trim-trace.mjs`.
 - **Don't perturb what you measure.** Anything that attaches to the process during a timed launch must happen in a separate pass.
 - **Readable source only.** The plugin directory is scanned, so commit plain, unminified JavaScript.
 
@@ -27,6 +27,10 @@ You need Node 22 or later. The Rust test needs `cargo`, the web test needs Chrom
 3. Add a profile function that creates a `Session`, sets `startup` and `phases`, and starts sampling.
 4. Expose it as a tool in `src/tools.mjs` and a command in `cli/sherlock.mjs`.
 5. Add an integration test, with a recorded stand-in for the platform's CLI when CI can't run the real thing (see `test/fixtures/bin/`).
+
+## Website
+
+The site at [haroonarchive.com/sherlock](https://haroonarchive.com/sherlock) is `docs/index.html`. It is served from the [haroonarchive](https://github.com/hiftikha/haroonarchive) repository as `src/docs/sherlock.html`, with the images in `public/sherlock/`; copy the page and images there when they change.
 
 ## Releases
 

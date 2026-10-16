@@ -2,7 +2,10 @@ import { join, resolve, relative, isAbsolute } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { detectProject } from './detect.mjs';
 import { launchNative, attachNative, captureStacks } from './launch.mjs';
-import { profileWeb } from './platform/web.mjs';
+import { profileWeb, interactWeb } from './platform/web.mjs';
+import { captureMarkStacks } from './interaction.mjs';
+import { canSampleStacks } from './stacks.mjs';
+import { SEGMENTS } from './parse/trace.mjs';
 import { profileIos, profileAndroid } from './platform/mobile.mjs';
 import { getSession, listSessions } from './session.mjs';
 import { startDashboard, writeReport } from './server.mjs';
@@ -25,6 +28,40 @@ export async function closeDashboards() {
 function need(session, id) {
   if (!session) throw new Error(id ? `No session ${id}.` : 'No session yet. Start one with sherlock_launch, sherlock_attach, sherlock_web, sherlock_ios or sherlock_android.');
   return session;
+}
+
+export function describeInteraction(r) {
+  if (r.kind === 'native') {
+    return {
+      label: r.label,
+      at: formatMs(r.t),
+      stacks: r.stacks?.available ? r.stacks.hot.slice(0, 8).map((h) => `${(h.pctOfActive * 100).toFixed(1)}% ${h.symbol} [${h.module}] on ${h.thread}`) : `call stacks unavailable: ${r.stacks?.reason ?? 'still sampling'}`,
+      summary: r.summary ? summaryLine(r.summary) : undefined,
+    };
+  }
+  if (!r.available) return { label: r.label, at: formatMs(r.t), input: r.input, measured: false, reason: r.reason };
+  return {
+    label: r.label,
+    at: formatMs(r.t),
+    input: r.input,
+    total: `${formatMs(r.totalMs)} ${r.frameShown ? 'input → frame shown' : 'input → last main-thread work (no frame presented)'}`,
+    slowest: `${r.slowest.label} ${formatMs(r.slowest.ms)} (${Math.round((r.slowest.share ?? 0) * 100)}%)`,
+    breakdown: Object.keys(SEGMENTS)
+      .filter((k) => r.totals[k] >= 0.5)
+      .map((k) => `${SEGMENTS[k]}: ${formatMs(r.totals[k])}`),
+    timeline: r.segments.filter((x) => x.end - x.start >= 1).map((x) => `${x.start.toFixed(0)}–${x.end.toFixed(0)} ms ${x.label}`),
+    eventTiming: r.eventTiming ? `${formatMs(r.eventTiming.durationMs)} to next paint (${formatMs(r.eventTiming.inputDelayMs)} input delay, ${formatMs(r.eventTiming.processingMs)} processing, ${formatMs(r.eventTiming.presentationDelayMs)} presentation) for ${r.eventTiming.events.join(', ')}` : undefined,
+    scripts: r.scripts?.length ? r.scripts.slice(0, 4).map((x) => `${formatMs(x.ms)} ${x.invoker}${x.source ? ` · ${x.source}` : ''}`) : undefined,
+    requests: r.requests?.length ? r.requests.slice(0, 5).map((x) => `${formatMs(x.ms)} ${x.method ?? 'GET'} ${x.url}${x.status ? ` → ${x.status}` : ''}${x.pending ? ' (still pending)' : ''}`) : undefined,
+    render: r.render && (r.render.layoutMs || r.render.styleMs || r.render.paintMs) ? `style ${formatMs(r.render.styleMs)}, layout ${formatMs(r.render.layoutMs)}${r.render.layoutObjects ? ` (${r.render.layoutObjects} objects)` : ''}, paint ${formatMs(r.render.paintMs)}` : undefined,
+    hotJs: r.stacks ? (r.stacks.available ? r.stacks.hot.slice(0, 6).map((h) => `${formatMs(h.ms)} ${h.symbol}${h.source ? ` ${h.source}` : ''}`) : `unavailable: ${r.stacks.reason}`) : undefined,
+    endSignal: r.endSignal,
+    notes: r.notes?.length ? r.notes : undefined,
+  };
+}
+
+function summaryLine(m) {
+  return `busy ${formatMs(m.busyMs)}${m.settled ? '' : '+'} · cpu ${m.cpuAvgPct.toFixed(0)}% avg / ${m.cpuPeakPct.toFixed(0)}% peak · memory ${m.rssDeltaBytes == null ? '—' : `${m.rssDeltaBytes >= 0 ? '+' : ''}${formatBytes(m.rssDeltaBytes)}`} (peak ${formatBytes(m.rssPeakBytes)})`;
 }
 
 export function digest(session, { dashboardUrl } = {}) {
@@ -61,6 +98,8 @@ export function digest(session, { dashboardUrl } = {}) {
     },
     notMeasured: missing.length ? missing.map((m) => (m === 'memBandwidth' && j.capabilities.memBandwidthReason ? `memBandwidth (${j.capabilities.memBandwidthReason})` : m)) : undefined,
     marks: j.marks?.length ? j.marks.map((m) => `${formatMs(m.t)} ${m.label}`) : undefined,
+    perInteraction: j.markSummaries?.length ? j.markSummaries.map((m) => `${formatMs(m.t)} ${m.label}: ${summaryLine(m)}`) : undefined,
+    interactions: j.interactions?.length ? j.interactions.slice(-6).map(describeInteraction) : undefined,
     findings: j.findings.map((f) => ({ severity: f.severity, title: f.title, evidence: f.evidence, suggestion: f.suggestion })),
     hotFunctions: j.stacks?.available
       ? j.stacks.hot.slice(0, 10).map((h) => `${(h.pctOfActive * 100).toFixed(1)}% ${h.symbol} [${h.module}] on ${h.thread}`)
@@ -145,11 +184,51 @@ export const TOOLS = [
         url: str('http(s) URL to load.'),
         cpu_throttle: num('Slow the CPU down by this factor (4 approximates a mid-range phone).'),
         headless: bool('Run Chrome headless. Default true.'),
+        keep_open: bool('Keep the page open after load so sherlock_interact can click and type on it. Default false.'),
       },
       required: ['url'],
       additionalProperties: false,
     },
-    run: async (i) => digest(await profileWeb({ url: i.url, cpuThrottle: i.cpu_throttle, headless: i.headless })),
+    run: async (i) => digest(await profileWeb({ url: i.url, cpuThrottle: i.cpu_throttle, headless: i.headless, keepOpen: !!i.keep_open })),
+  },
+  {
+    name: 'sherlock_interact',
+    description:
+      'Perform one interaction on an open web page (a click on a selector or at x/y, or a key press) and break its latency down end to end from a DevTools trace: input delay, event handlers, script, network, style/layout/paint and presentation of the frame that shows the result. Reports the slowest segment, the Event Timing (INP) numbers, the requests, the longest scripts and the layout cost, and draws the breakdown on the dashboard. Uses the page from sherlock_web with keep_open, or opens url. For native apps use sherlock_mark with stacks_seconds instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        label: str('Short name of the interaction, e.g. "open menu". Repeat the same label to compare runs.'),
+        selector: str('CSS selector of the element to click (or to focus before pressing key).'),
+        x: num('Viewport x to click, when there is no selector.'),
+        y: num('Viewport y to click, when there is no selector.'),
+        key: str('Press this key instead of clicking: a single character or Enter, Tab, Escape, Backspace, Space, ArrowDown and so on.'),
+        done_selector: str('CSS selector that appears only when the interaction has finished (e.g. "#results li"). The breakdown then ends at the first frame after it appears. Without it, Sherlock waits for the network and main thread to go quiet.'),
+        url: str('Open this page first (headless Chrome) when no web page session is open.'),
+        timeout_ms: num('Give up waiting after this long. Default 10000.'),
+        quiet_ms: num('Network quiet time that ends the interaction when there is no done_selector. Default 500.'),
+        repeat: num('Run the interaction this many times (1–10). Default 1.'),
+        stacks: bool('Also sample JavaScript call stacks with the V8 profiler (adds some overhead). Default false.'),
+        session: str('Session id. Defaults to the latest.'),
+      },
+      required: ['label'],
+      additionalProperties: false,
+    },
+    run: async (i) => {
+      let s = getSession(i.session);
+      if (i.url && !(s?.kind === 'web' && s.cdp && !s.stopped)) s = await profileWeb({ url: i.url, keepOpen: true });
+      s = need(s, i.session);
+      if (s.kind !== 'web') throw new Error(`sherlock_interact drives web pages; session ${s.id} is ${s.kind}. For a native app, call sherlock_mark with stacks_seconds and perform the interaction.`);
+      const runs = [];
+      for (let n = 0; n < Math.min(10, Math.max(1, Math.round(i.repeat ?? 1))); n++) {
+        runs.push(
+          await interactWeb(s, { label: i.label, selector: i.selector, x: i.x, y: i.y, key: i.key, doneSelector: i.done_selector, timeoutMs: i.timeout_ms, quietMs: i.quiet_ms, stacks: i.stacks }),
+        );
+        if (n + 1 < (i.repeat ?? 1)) await sleep(300);
+      }
+      const finding = s.findings.find((f) => f.id === 'interaction-slowest-segment' && f.label === runs[0].label);
+      return { session: s.id, dashboard: dashboards.get(s.id)?.url, finding: finding ? { severity: finding.severity, title: finding.title, evidence: finding.evidence, suggestion: finding.suggestion } : undefined, runs: runs.map(describeInteraction) };
+    },
   },
   {
     name: 'sherlock_ios',
@@ -175,11 +254,26 @@ export const TOOLS = [
   },
   {
     name: 'sherlock_mark',
-    description: 'Put an interaction marker on the live timeline (for example "open document") just before the user or a script performs it. Repeating the same label lets Sherlock spot memory each interaction keeps.',
-    input_schema: { type: 'object', properties: { label: str('Short name of the interaction.'), session: str('Session id. Defaults to the latest.') }, required: ['label'], additionalProperties: false },
+    description:
+      'Put an interaction marker on the live timeline (for example "open document") just before the user or a script performs it. Sherlock summarizes CPU busy time and memory after every mark, and repeating the same label lets it spot memory each interaction keeps. With stacks_seconds (macOS) it also samples call stacks for that long in the background, so you can see which functions the interaction burns; the result appears in the next sherlock_observe digest.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        label: str('Short name of the interaction.'),
+        stacks_seconds: num('Sample call stacks for this many seconds right after the mark (macOS `sample`). Perform the interaction during that window.'),
+        session: str('Session id. Defaults to the latest.'),
+      },
+      required: ['label'],
+      additionalProperties: false,
+    },
     run: async (i) => {
       const s = need(getSession(i.session), i.session);
-      return s.mark(i.label, { source: 'agent' });
+      const m = s.mark(i.label, { source: 'agent' });
+      if (!i.stacks_seconds) return m;
+      if (!canSampleStacks()) return { ...m, stacks: `not captured: ${process.platform === 'linux' ? 'call stacks on Linux need `perf record`; not wired up in this release' : 'call stacks need macOS `sample`'}` };
+      const seconds = Math.min(30, Math.max(1, Number(i.stacks_seconds)));
+      captureMarkStacks(s, m, seconds);
+      return { ...m, stacks: `sampling call stacks for ${seconds} s in the background; perform the interaction now, then call sherlock_observe` };
     },
   },
   {

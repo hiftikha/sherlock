@@ -66,8 +66,8 @@ function setNumber(host, parts) {
 
 const fmtMs = (ms) => (ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`);
 const fmtBytes = (b) => {
-  const p = bytesParts(b);
-  return p ? `${p.value.toFixed(p.digits)}${p.suffix}` : '—';
+  const p = bytesParts(b == null ? b : Math.abs(b));
+  return p ? `${b < 0 ? '-' : ''}${p.value.toFixed(p.digits)}${p.suffix}` : '—';
 };
 
 function last(arr, key) {
@@ -162,6 +162,53 @@ const LANES = [
 
 const fmtPct = (p) => (p == null ? '—' : `${p.toFixed(0)}%`);
 
+const SEGMENT_ORDER = ['input', 'handlers', 'script', 'render', 'network', 'idle', 'other', 'frame'];
+
+function renderInteractionPanels() {
+  const out = [];
+  const records = S.interactions ?? [];
+  const web = records.filter((r) => r.kind === 'web').slice(-10);
+  if (web.length) {
+    const longest = Math.max(...web.filter((r) => r.available).map((r) => r.totalMs), 1);
+    const rows = web.map((r) => {
+      const name = `<div class="name">${esc(r.label)}<span class="mono">${esc(r.input ?? '')} · ${fmtMs(r.t)}</span></div>`;
+      if (!r.available) return `${name}<div class="mono muted small">not measured · ${esc(r.reason)}</div><div class="total">—</div>`;
+      const bar = `<div class="seg-bar" style="width:${((r.totalMs / longest) * 100).toFixed(2)}%">${r.segments
+        .map((g) => `<i class="s-${esc(g.key)}" style="width:${(((g.end - g.start) / r.totalMs) * 100).toFixed(3)}%" title="${esc(g.label)} ${fmtMs(g.end - g.start)} (${fmtMs(g.start)}–${fmtMs(g.end)})"></i>`)
+        .join('')}</div>`;
+      const legend = SEGMENT_ORDER.filter((k) => r.totals[k] >= 0.5)
+        .map((k) => `<span class="${r.slowest?.key === k ? 'slow' : ''}"><b class="s-${k}"></b>${esc(r.segments.find((g) => g.key === k)?.label ?? k)} ${fmtMs(r.totals[k])}</span>`)
+        .join('');
+      const why = [];
+      if (r.slowest?.key === 'network' && r.requests?.length) {
+        const q = [...r.requests].sort((a, b) => b.ms - a.ms)[0];
+        why.push(`slowest request ${q.method ?? 'GET'} ${q.url} ${fmtMs(q.ms)}`);
+      }
+      if (['handlers', 'script', 'input'].includes(r.slowest?.key) && r.scripts?.length) why.push(`longest script ${r.scripts[0].invoker} ${fmtMs(r.scripts[0].ms)}`);
+      if (r.slowest?.key === 'render' && r.render) why.push(`layout ${fmtMs(r.render.layoutMs)}${r.render.layoutObjects ? ` over ${r.render.layoutObjects} objects` : ''} · style ${fmtMs(r.render.styleMs)} · paint ${fmtMs(r.render.paintMs)}`);
+      if (r.eventTiming) why.push(`Event Timing ${fmtMs(r.eventTiming.durationMs)} to next paint`);
+      for (const n of r.notes ?? []) why.push(n);
+      return `${name}${bar}<div class="total">${fmtMs(r.totalMs)}</div><div class="legend mono">${legend}</div>${why.length ? `<div class="why mono">${why.map(esc).join(' · ')}</div>` : ''}`;
+    });
+    out.push(`<div class="panel"><h3>Interaction latency <span class="mono muted small">input → ${web.some((r) => r.frameShown) ? 'frame shown' : 'last work'} · DevTools trace</span></h3><div class="ix">${rows.join('')}</div></div>`);
+  }
+  for (const r of records.filter((x) => x.kind === 'native').slice(-3)) {
+    const st = r.stacks;
+    if (st?.available && st.hot?.length) {
+      const rows = st.hot.slice(0, 10).map((h) => `<tr><td class="sym">${esc(h.symbol)}<div class="bar" style="width:${Math.max(2, h.pctOfActive * 100).toFixed(1)}%"></div></td><td class="dim">${esc(h.module)}</td><td class="dim">${esc(h.thread)}</td><td class="num">${(h.pctOfActive * 100).toFixed(1)}%</td></tr>`);
+      out.push(`<div class="panel"><h3>Call stacks during "${esc(r.label)}" <span class="mono muted small">${esc(st.tool)} · ${esc(st.window)} · ${st.activeSamples} busy of ${st.totalSamples} samples</span></h3><table><thead><tr><th>Function (self time)</th><th>Module</th><th>Thread</th><th style="text-align:right">Busy</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`);
+    } else if (st) {
+      out.push(`<div class="panel"><h3>Call stacks during "${esc(r.label)}" <span class="mono muted small">${esc(st.reason ?? 'sampling…')}</span></h3></div>`);
+    }
+  }
+  const sums = (S.markSummaries ?? []).filter((m) => !(S.kind === 'web' && (m.label === 'navigate' || m.label === 'load')));
+  if (sums.length) {
+    const rows = sums.slice(-12).map((m) => `<tr><td class="sym">${esc(m.label)}</td><td class="num">${fmtMs(m.t)}</td><td class="num">${fmtMs(m.busyMs)}${m.settled ? '' : '+'}</td><td class="num">${fmtPct(m.cpuAvgPct)} / ${fmtPct(m.cpuPeakPct)}</td><td class="num">${m.rssDeltaBytes == null ? '—' : `${m.rssDeltaBytes >= 0 ? '+' : ''}${fmtBytes(m.rssDeltaBytes)}`}</td><td class="num">${fmtBytes(m.rssPeakBytes)}</td></tr>`);
+    out.push(`<div class="panel"><h3>Per interaction <span class="mono muted small">CPU and memory after each mark · samples every ~${sums[0].resolutionMs ?? '—'} ms</span></h3><table><thead><tr><th>Interaction</th><th style="text-align:right">At</th><th style="text-align:right">Busy</th><th style="text-align:right">CPU avg / peak</th><th style="text-align:right">Memory Δ</th><th style="text-align:right">Peak</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`);
+  }
+  return out;
+}
+
 function renderAxis(w0, w1) {
   const span = w1 - w0;
   const steps = [100, 250, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000];
@@ -220,11 +267,24 @@ function renderLanes(w0, w1) {
     if (!dense) lastPx = left + w;
     return { m, dense };
   });
+  const measured = (S.interactions ?? []).filter((r) => r.kind === 'web' && r.available && r.segments?.length);
+  const bars = measured
+    .filter((r) => r.t + r.totalMs >= w0 && r.t <= w1)
+    .map((r) => {
+      const w = Math.max((r.totalMs / span) * 100, 0);
+      const parts = r.segments.map((g) => `<i class="s-${esc(g.key)}" style="width:${(((g.end - g.start) / r.totalMs) * 100).toFixed(3)}%"></i>`).join('');
+      return `<div class="ibar" style="left:${pct(r.t)};width:${w.toFixed(3)}%" title="${esc(r.label)}: ${fmtMs(r.totalMs)} input → ${r.frameShown ? 'frame shown' : 'last work'} · slowest ${esc(r.slowest.label)} ${fmtMs(r.slowest.ms)}">${parts}</div>`;
+    });
+  const summaries = new Map((S.markSummaries ?? []).map((x) => [`${x.label}@${x.t}`, x]));
   html.push(
-    `<div class="lane-row lane-marks rule"><div class="lane-label"><div class="t">Interactions</div><div class="s mono">${(S.marks ?? []).length} marked</div></div><div class="lane-track">${pills
+    `<div class="lane-row lane-marks rule ${bars.length ? 'has-bars' : ''}"><div class="lane-label"><div class="t">Interactions</div><div class="s mono">${(S.marks ?? []).length} marked${measured.length ? ` · ${measured.length} measured` : ''}</div></div><div class="lane-track">${pills
       .filter(({ dense }) => !dense)
-      .map(({ m, dense }) => `<div class="pill mono ${m.source === 'sherlock' ? '' : 'user'} ${dense ? 'dense' : ''} ${(m.t - w0) / span > 0.85 ? 'flip' : ''}" style="left:${pct(m.t)}" title="${esc(m.label)} @ ${fmtMs(m.t)}">${dense ? '' : esc(m.label)}</div>`)
-      .join('')}</div></div>`,
+      .map(({ m, dense }) => {
+        const sum = summaries.get(`${m.label}@${m.t}`);
+        const tip = `${m.label} @ ${fmtMs(m.t)}${sum ? ` · busy ${fmtMs(sum.busyMs)} · cpu peak ${fmtPct(sum.cpuPeakPct)} · memory ${sum.rssDeltaBytes == null ? '—' : `${sum.rssDeltaBytes >= 0 ? '+' : ''}${fmtBytes(sum.rssDeltaBytes)}`}` : ''}`;
+        return `<div class="pill mono ${m.source === 'sherlock' ? '' : 'user'} ${dense ? 'dense' : ''} ${(m.t - w0) / span > 0.85 ? 'flip' : ''}" style="left:${pct(m.t)}" title="${esc(tip)}">${dense ? '' : esc(m.label)}</div>`;
+      })
+      .join('')}${bars.join('')}</div></div>`,
   );
 
   for (const lane of LANES) {
@@ -260,7 +320,7 @@ function renderLanes(w0, w1) {
 }
 
 function renderPanels() {
-  const out = [];
+  const out = renderInteractionPanels();
   const stacks = S.stacks;
   if (stacks?.available && stacks.hot?.length) {
     const rows = stacks.hot.slice(0, 12).map(
@@ -346,7 +406,7 @@ function connect() {
   if (window.__SHERLOCK__) {
     S = window.__SHERLOCK__;
     S.notes ??= [];
-    if (S.startup) setView('startup');
+    if (S.startup && !S.interactions?.length) setView('startup');
     render();
     return;
   }
@@ -358,7 +418,7 @@ function connect() {
       const fromHash = location.hash.slice(1);
       if (['live', 'all', 'startup'].includes(fromHash)) setView(fromHash);
       else if (S.live && S.kind === 'attach') setView('live');
-      else if (S.startup && S.kind !== 'attach') setView('startup');
+      else if (S.startup && S.kind !== 'attach' && !S.interactions?.length) setView('startup');
     }
     schedule();
   });
@@ -387,6 +447,11 @@ function connect() {
     if (S) S.stacks = JSON.parse(e.data);
     schedule();
   });
+  es.addEventListener('interaction', (e) => {
+    if (!S) return;
+    (S.interactions ??= []).push(JSON.parse(e.data));
+    schedule();
+  });
   es.addEventListener('note', (e) => {
     S?.notes.push(JSON.parse(e.data));
     schedule();
@@ -403,6 +468,7 @@ function connect() {
       S.startup = fresh.startup;
       S.summary = fresh.summary;
       S.capabilities = fresh.capabilities;
+      S.markSummaries = fresh.markSummaries;
       schedule();
     } catch {}
   }, 3000);

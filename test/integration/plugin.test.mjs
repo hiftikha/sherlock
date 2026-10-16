@@ -80,7 +80,7 @@ test('MCP server: initialize, list tools, call tools, report errors', { timeout:
     c.notify('notifications/initialized');
     const list = await c.call('tools/list', {});
     const names = list.result.tools.map((t) => t.name);
-    for (const n of ['sherlock_detect', 'sherlock_launch', 'sherlock_attach', 'sherlock_web', 'sherlock_ios', 'sherlock_android', 'sherlock_mark', 'sherlock_dashboard', 'sherlock_note', 'sherlock_stop']) assert.ok(names.includes(n), n);
+    for (const n of ['sherlock_detect', 'sherlock_launch', 'sherlock_attach', 'sherlock_web', 'sherlock_ios', 'sherlock_android', 'sherlock_mark', 'sherlock_interact', 'sherlock_dashboard', 'sherlock_note', 'sherlock_stop']) assert.ok(names.includes(n), n);
     for (const t of list.result.tools) assert.equal(t.inputSchema.type, 'object');
     const detect = await c.call('tools/call', { name: 'sherlock_detect', arguments: { dir: join(ROOT, 'test/fixtures/rust-app') } });
     assert.match(detect.result.content[0].text, /"rust"/);
