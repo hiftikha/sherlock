@@ -59,7 +59,8 @@ Then, in any project:
 Or without Claude Code installed first, from any project folder:
 
 ```sh
-npx sherlock-profiler
+npx sherlock-profiler            # from npm
+npx github:hiftikha/sherlock     # or straight from this repository
 ```
 
 The wizard detects the project, then offers to open Claude Code with Sherlock loaded, run the agent in the terminal with your API key, profile it directly without an agent, or install the plugin for every project.
