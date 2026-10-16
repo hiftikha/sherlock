@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://skills.wheresryan.sh/sherlock"><img src="https://img.shields.io/badge/Website-skills.wheresryan.sh%2Fsherlock-1b1b19?style=for-the-badge" alt="Website: skills.wheresryan.sh/sherlock"></a>
+  <a href="https://haroonarchive.com/sherlock"><img src="https://img.shields.io/badge/Website-haroonarchive.com%2Fsherlock-1b1b19?style=for-the-badge" alt="Website: haroonarchive.com/sherlock"></a>
   &nbsp;
   <a href="#install"><img src="https://img.shields.io/badge/Install-npx_sherlock--profiler-ffb224?style=for-the-badge&labelColor=1b1b19&logo=npm&logoColor=white" alt="Install with npx"></a>
   &nbsp;

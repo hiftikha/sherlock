@@ -28,6 +28,10 @@ You need Node 22 or later. The Rust test needs `cargo`, the web test needs Chrom
 4. Expose it as a tool in `src/tools.mjs` and a command in `cli/sherlock.mjs`.
 5. Add an integration test, with a recorded stand-in for the platform's CLI when CI can't run the real thing (see `test/fixtures/bin/`).
 
+## Website
+
+The site at [haroonarchive.com/sherlock](https://haroonarchive.com/sherlock) is `docs/index.html`. It is served from the [haroonarchive](https://github.com/hiftikha/haroonarchive) repository as `src/docs/sherlock.html`, with the images in `public/sherlock/`; copy the page and images there when they change.
+
 ## Releases
 
 Bump `version` in both `package.json` and `.claude-plugin/plugin.json` (a test checks they match), add a `CHANGELOG.md` entry, and tag `vX.Y.Z`.

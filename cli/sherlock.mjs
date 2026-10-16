@@ -50,7 +50,7 @@ ${c.bold('Options')}
   -h, --help            this help
   -v, --version         version
 
-Docs: https://skills.wheresryan.sh/sherlock`;
+Docs: https://haroonarchive.com/sherlock`;
 
 function parseArgs(argv) {
   const out = { _: [], rest: null };

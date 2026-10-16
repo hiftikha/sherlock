@@ -7,7 +7,7 @@
     "name": "Haroon Iftikhar",
     "url": "https://github.com/hiftikha"
   },
-  "homepage": "https://skills.wheresryan.sh/sherlock",
+  "homepage": "https://haroonarchive.com/sherlock",
   "repository": "https://github.com/hiftikha/sherlock",
   "license": "MIT",
   "keywords": ["profiler", "performance", "startup", "memory", "cpu", "rust", "tauri", "electron", "ios", "android", "web"]
