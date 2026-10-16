@@ -388,7 +388,11 @@ export async function interactWeb(session, opts) {
     cdp.on('Tracing.dataCollected', onData);
     await cdp.send('Tracing.start', { traceConfig: { includedCategories: categories, recordMode: 'recordAsMuchAsPossible' }, transferMode: 'ReportEvents' });
     tracing = true;
-    await sleep(50);
+    // Starting the V8 profiler logs every compiled function on the main
+    // thread; let that finish before the window opens. The evaluate round
+    // trip queues behind whatever tracing start posted there.
+    await sleep(opts.stacks ? 300 : 50);
+    await evaluate(cdp, '0');
     await evaluate(cdp, `performance.mark('sherlock-start'), 0`);
     const mark = session.mark(label, { source: 'sherlock' });
     const sentAt = performance.now();

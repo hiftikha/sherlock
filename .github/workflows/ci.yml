@@ -38,6 +38,16 @@ jobs:
 
       - name: Integration tests (native, Rust, web, iOS, Android, MCP, CLI)
         run: node --test --test-concurrency=1 "test/integration/*.test.mjs"
+        env:
+          SHERLOCK_TRACE_DIR: ${{ runner.temp }}/sherlock-traces
+
+      - name: Upload DevTools traces from failed web tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces-${{ matrix.os }}-node${{ matrix.node }}
+          path: ${{ runner.temp }}/sherlock-traces
+          if-no-files-found: ignore
 
       - name: CLI smoke test
         run: |

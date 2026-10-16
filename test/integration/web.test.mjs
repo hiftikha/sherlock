@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { profileWeb, findChrome, interactWeb } from '../../src/platform/web.mjs';
@@ -55,25 +56,45 @@ test('web: rejects a non-http URL', async () => {
   await assert.rejects(profileWeb({ url: 'file:///etc/passwd', chromePath: process.execPath }), /http\(s\) URL/);
 });
 
+// When an attribution assertion fails, keep the raw trace so CI can upload it.
+async function keepTrace(name, events, err) {
+  const dir = process.env.SHERLOCK_TRACE_DIR;
+  if (dir && events) {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${name}.json`), JSON.stringify(events));
+  }
+  throw err;
+}
+
 test('web: closed-loop breakdown of a click, a key press and a done condition', { skip: !chrome && 'needs Chrome or Chromium (set CHROME_PATH)', timeout: 120000 }, async () => {
   const server = await startInteractionServer();
   const session = await profileWeb({ url: server.url, keepOpen: true, settleMs: 300 });
+  let raw;
   try {
-    const click = await interactWeb(session, { selector: '#open', label: 'open list', stacks: true });
+    const click = await interactWeb(session, { selector: '#open', label: 'open list', onTrace: (e) => (raw = e) });
     const why = JSON.stringify({ totals: click.totals, notes: click.notes, reason: click.reason });
-    assert.equal(click.available, true, why);
-    assert.equal(click.inputSource, 'event timing', why);
-    assert.equal(click.slowest.key, 'network', why);
-    assert.ok(click.totals.network >= 250, why);
-    assert.ok(click.totals.handlers >= 100, why);
-    assert.ok(click.totals.script >= 30, why);
-    assert.ok(click.totals.render > 0, why);
-    assert.ok(click.totalMs >= 450, why);
-    assert.equal(click.frameShown, true, why);
-    assert.ok(click.requests.some((r) => r.url.endsWith('/api/items') && r.status === 200));
-    assert.ok(click.stacks.available, click.stacks.reason);
-    assert.ok(click.stacks.hot.some((h) => h.symbol === 'burn'));
+    try {
+      assert.equal(click.available, true, why);
+      assert.equal(click.inputSource, 'event timing', why);
+      assert.equal(click.slowest.key, 'network', why);
+      assert.ok(click.totals.network >= 250, why);
+      assert.ok(click.totals.handlers >= 100, why);
+      assert.ok(click.totals.script >= 30, why);
+      assert.ok(click.totals.render > 0, why);
+      assert.ok(click.totalMs >= 450, why);
+      assert.equal(click.frameShown, true, why);
+      assert.ok(click.requests.some((r) => r.url.endsWith('/api/items') && r.status === 200));
+    } catch (err) {
+      await keepTrace('click', raw, err);
+    }
     assert.equal(session.marks.at(-1).label, 'open list');
+
+    // The profiler adds overhead, so this run only checks that it found the hot function.
+    await session.cdp.send('Runtime.evaluate', { expression: `document.getElementById('done').remove()` });
+    const profiled = await interactWeb(session, { selector: '#open', label: 'open list (profiled)', stacks: true });
+    assert.equal(profiled.available, true, profiled.reason);
+    assert.ok(profiled.stacks.available, profiled.stacks.reason);
+    assert.ok(profiled.stacks.hot.some((h) => h.symbol === 'burn'), JSON.stringify(profiled.stacks.hot.slice(0, 5)));
 
     const key = await interactWeb(session, { selector: '#q', key: 'a', label: 'type' });
     assert.equal(key.available, true, key.reason);
@@ -89,7 +110,7 @@ test('web: closed-loop breakdown of a click, a key press and a done condition', 
     await assert.rejects(interactWeb(session, { selector: '#open', label: 'x', doneSelector: '#done' }), /already matches/);
 
     const j = session.toJSON();
-    assert.equal(j.interactions.length, 3);
+    assert.equal(j.interactions.length, 4);
     const f = j.findings.find((x) => x.id === 'interaction-slowest-segment' && x.label === 'open list');
     assert.match(f.title, /^Slowest segment of "open list" is network: \d+ ms$/);
     assert.ok(j.findings.some((x) => x.id === 'interaction-slowest-segment' && x.label === 'type'));
