@@ -145,3 +145,21 @@ test('findings: web vitals and android start', () => {
   const a = analyze(session([], { mobile: { os: 'android', totalTimeMs: 6000, launchState: 'COLD' } }));
   assert.equal(a.find((x) => x.id === 'android-start').severity, 'high');
 });
+
+test('findings: a sample taken at the instant of a mark does not count as "before"', () => {
+  const MBx = 1024 * 1024;
+  const samples = [];
+  const marks = [];
+  let rss = 100 * MBx;
+  for (let i = 0; i < 24; i++) {
+    const t = i * 150;
+    if (i % 6 === 4) {
+      marks.push({ label: 'open doc', t });
+      rss += 8 * MBx;
+    }
+    samples.push({ t, cpuPct: 1, rssBytes: rss });
+  }
+  const leak = interactionLeak({ samples, marks });
+  assert.ok(leak, 'leak found even though each mark shares its timestamp with the first sample after the allocation');
+  assert.ok(Math.abs(leak.metric - 8 * MBx) < 0.01 * MBx);
+});

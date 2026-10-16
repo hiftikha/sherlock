@@ -148,7 +148,7 @@ export function interactionLeak(session) {
   let worst = null;
   for (const [label, ms] of byLabel) {
     if (ms.length < 2) continue;
-    const before = (t) => [...samples].reverse().find((s) => s.t <= t)?.rssBytes;
+    const before = (t) => [...samples].reverse().find((s) => s.t < t - 100)?.rssBytes;
     const settledAfter = (t, next) => {
       const from = next != null ? Math.max(t + 300, next - 1500) : t + 300;
       const win = samples.filter((s) => s.t > from && s.t < (next ?? Infinity));

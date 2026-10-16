@@ -51,7 +51,7 @@ test('attach samples a running process and its interaction marks', { skip: !host
   await new Promise((resolve) => child.stdout.on('data', (d) => String(d).includes('READY') && resolve()));
   const session = await attachNative({ pid: child.pid, intervalMs: 150 });
   await sleep(600);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     session.mark('open doc');
     process.kill(child.pid, 'SIGUSR2');
     await sleep(900);
@@ -60,10 +60,11 @@ test('attach samples a running process and its interaction marks', { skip: !host
   child.kill();
   const j = session.toJSON();
   assert.equal(j.kind, 'attach');
-  assert.equal(j.marks.length, 3);
+  assert.equal(j.marks.length, 4);
   assert.ok(j.samples.length >= 10);
   const leak = j.findings.find((f) => f.id === 'interaction-leak');
-  assert.ok(leak, `expected a leak finding, got ${j.findings.map((f) => f.id)}`);
+  const trace = j.samples.map((x) => `${x.t}:${Math.round(x.rssBytes / 1048576)}`).join(' ');
+  assert.ok(leak, `expected a leak finding, got [${j.findings.map((f) => f.id)}]; marks ${j.marks.map((m) => m.t)}; samples ${trace}`);
   assert.match(leak.title, /open doc/);
 });
 
