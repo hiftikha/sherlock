@@ -66,6 +66,20 @@ test('trace: a key press', () => {
   assert.match(r.scripts[0].invoker, /INPUT#q\.keydown/);
 });
 
+test('trace: a main thread blocked during the request is not counted as network', () => {
+  // Recorded on a GitHub macOS runner: the response finished at ~449 ms, but the
+  // renderer's main thread sat in one task with nothing traced inside it until
+  // ~740 ms while its compositor thread was busy.
+  const r = parseInteractionTrace(fixture('click-blocked'));
+  assertContiguous(r);
+  assert.equal(r.slowest.key, 'other');
+  assert.ok(r.totals.other > 300, `other ${r.totals.other}`);
+  assert.ok(r.requests[0].ms >= 300, 'the request itself still took its full time');
+  assert.ok(r.totals.network < r.requests[0].ms);
+  assert.match(r.notes.at(-1), /^The main thread ran tasks with nothing traced inside them for \d+ ms \(longest \d+ ms, starting at \d+ ms\); the compositor thread was busy for \d+ ms of that time\.$/);
+  assert.deepEqual(parseInteractionTrace(fixture('click')).notes, [], 'no such note when the main thread was not blocked');
+});
+
 test('trace: never invents a frame or an input time it did not see', () => {
   const noFrames = fixture('click').filter((e) => e.name !== 'Display::FrameDisplayed' && e.name !== 'AnimationFrame::Presentation');
   const r = parseInteractionTrace(noFrames);

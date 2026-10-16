@@ -262,6 +262,12 @@ export function parseInteractionTrace(events, { startMark = 'sherlock-start', do
   if (!frameTs) notes.push(`No frame showing the result was presented (${anchor == null ? 'nothing on screen changed' : presentations.ts.length ? 'the last commit was never displayed' : 'the trace has no presentation events'}), so the breakdown ends at the last main-thread work and frame presentation is not measured.`);
   if (inputSource !== 'event timing') notes.push(`Input time comes from the ${inputSource}; Event Timing was not in the trace.`);
   if (!cutoff) notes.push('The trace has no cutoff mark; every task until the end of the trace was considered.');
+  const untraced = untracedSummary(segments, intervals, sorted, names, pid, t0, end);
+  if (untraced && untraced.ms >= 50) {
+    notes.push(
+      `The main thread ran tasks with nothing traced inside them for ${Math.round(untraced.ms)} ms (longest ${Math.round(untraced.longestMs)} ms, starting at ${Math.round(untraced.longestStartMs)} ms)${untraced.compositorBusyMs != null ? `; the compositor thread was busy for ${Math.round(untraced.compositorBusyMs)} ms of that time` : ''}.`,
+    );
+  }
   else if (!done && cutoff.ts - Math.max(lastWorkEnd, anchor ?? 0) < 100000) notes.push('The page was still working when Sherlock stopped waiting (an animation or polling?), so the end is approximate. Pass a done selector to end the interaction when its result appears.');
 
   return {
@@ -298,6 +304,27 @@ export function coalesce(segments, minUs = 500) {
     } else out.push({ ...s });
   }
   return out;
+}
+
+// Time the main thread spent in tasks with no traced work inside them, and
+// how much of it overlapped tasks on the same renderer's compositor thread.
+function untracedSummary(segments, intervals, sorted, names, pid, t0, end) {
+  const other = segments.filter((s) => s.key === 'other');
+  if (!other.length) return null;
+  const ms = other.reduce((a, s) => a + (s.end - s.start), 0) / 1000;
+  const tasks = intervals.filter((iv) => iv.kind === 'other' && iv.end > t0 && iv.start < end);
+  const longest = tasks.reduce((m, iv) => (!m || iv.end - iv.start > m.end - m.start ? iv : m), null);
+  const compositor = [...names.entries()].find(([k, v]) => v === 'Compositor' && k.startsWith(`${pid}:`))?.[0];
+  let compositorBusyMs = null;
+  if (compositor) {
+    const busy = sorted.filter((e) => `${e.pid}:${e.tid}` === compositor && e.ph === 'X' && e.name === 'RunTask' && e.dur);
+    compositorBusyMs = 0;
+    for (const s of other) {
+      for (const b of busy) compositorBusyMs += Math.max(0, Math.min(s.end, b.ts + b.dur) - Math.max(s.start, b.ts));
+    }
+    compositorBusyMs /= 1000;
+  }
+  return { ms, longestMs: longest ? (Math.min(longest.end, end) - Math.max(longest.start, t0)) / 1000 : 0, longestStartMs: longest ? (Math.max(longest.start, t0) - t0) / 1000 : 0, compositorBusyMs };
 }
 
 function lastWorkEndBefore(intervals, before, floor) {
