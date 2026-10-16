@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { launchNative, attachNative, captureStacks } from '../../src/launch.mjs';
 import { canSampleStacks } from '../../src/stacks.mjs';
+import { captureMarkStacks } from '../../src/interaction.mjs';
 import { sleep } from '../../src/util.mjs';
 
 const host = process.platform === 'darwin' || process.platform === 'linux';
@@ -66,6 +67,12 @@ test('attach samples a running process and its interaction marks', { skip: !host
   const trace = j.samples.map((x) => `${x.t}:${Math.round(x.rssBytes / 1048576)}`).join(' ');
   assert.ok(leak, `expected a leak finding, got [${j.findings.map((f) => f.id)}]; marks ${j.marks.map((m) => m.t)}; samples ${trace}`);
   assert.match(leak.title, /open doc/);
+  assert.equal(j.markSummaries.length, 4, 'a CPU/memory summary per interaction');
+  for (const m of j.markSummaries) {
+    assert.equal(m.label, 'open doc');
+    assert.ok(m.samples >= 2);
+    assert.ok(m.rssDeltaBytes != null && m.cpuPeakPct != null);
+  }
 });
 
 test('macOS: startup call stacks from a warm-up launch', { skip: !canSampleStacks() && 'needs macOS sample', timeout: 90000 }, async () => {
@@ -86,4 +93,30 @@ test('macOS: on-demand stacks during a live session', { skip: !canSampleStacks()
   busy.kill();
   assert.ok(st.available, st.reason);
   assert.ok(st.hot[0].pctOfActive > 0.05);
+});
+
+test('macOS: call stacks around a mark, with the hottest function as a finding', { skip: !canSampleStacks() && 'needs macOS sample', timeout: 60000 }, async () => {
+  const busy = spawn(process.execPath, ['-e', 'const e=Date.now()+8000;let x=0;while(Date.now()<e)x+=Math.sqrt(x+1)'], { stdio: 'ignore' });
+  const session = await attachNative({ pid: busy.pid, intervalMs: 150 });
+  await sleep(300);
+  const mark = session.mark('crunch', { source: 'agent' });
+  const record = await captureMarkStacks(session, mark, 1);
+  session.stop();
+  busy.kill();
+  assert.equal(record.kind, 'native');
+  assert.ok(record.stacks.available, record.stacks.reason);
+  assert.ok(record.summary.busyMs > 0, JSON.stringify(record.summary));
+  const j = session.toJSON();
+  assert.equal(j.interactions.length, 1);
+  assert.ok(j.findings.some((f) => f.id === 'interaction-hot-function' && f.label === 'crunch'));
+});
+
+test('stacks around a mark say why when they cannot be captured', { skip: canSampleStacks() && 'covered by the macOS test', timeout: 20000 }, async () => {
+  const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},5000)'], { stdio: 'ignore' });
+  const session = await attachNative({ pid: child.pid });
+  const record = await captureMarkStacks(session, session.mark('x'), 1);
+  session.stop();
+  child.kill();
+  assert.equal(record.stacks.available, false);
+  assert.ok(record.stacks.reason.length > 10);
 });

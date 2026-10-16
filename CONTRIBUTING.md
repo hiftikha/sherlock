@@ -16,7 +16,7 @@ You need Node 22 or later. The Rust test needs `cargo`, the web test needs Chrom
 
 - **No runtime dependencies for profiling.** Everything under `src/` except `agent.mjs` uses Node's built-in modules only, so the Claude Code plugin runs with no install step. Keep it that way.
 - **Never report a guess as a measurement.** If a platform can't measure something, set the capability to `null` with a reason; the dashboard and the agent both show it as unavailable.
-- **Parsers are pure.** Each tool's output is parsed by a function in `src/parse/` with a unit test against real output saved in `test/fixtures/`. When you add a platform, add the parser, a fixture and a test first.
+- **Parsers are pure.** Each tool's output is parsed by a function in `src/parse/` with a unit test against real output saved in `test/fixtures/`. When you add a platform, add the parser, a fixture and a test first. The DevTools trace fixtures in `test/fixtures/web/` are recorded with `node scripts/record-trace-fixture.mjs`.
 - **Don't perturb what you measure.** Anything that attaches to the process during a timed launch must happen in a separate pass.
 - **Readable source only.** The plugin directory is scanned, so commit plain, unminified JavaScript.
 

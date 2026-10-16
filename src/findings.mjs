@@ -1,4 +1,6 @@
 import { formatBytes, formatMs, linearSlope, median } from './util.mjs';
+import { markSummaries } from './interaction.mjs';
+import { SEGMENTS } from './parse/trace.mjs';
 
 const MB = 1024 * 1024;
 
@@ -129,6 +131,7 @@ export function analyze(session) {
     add({ id: 'memory-peak', severity: 'medium', title: `Peak memory ${formatBytes(peakRss)}`, metric: peakRss, evidence: ['across the process tree'] });
   }
 
+  out.push(...interactionFindings(session));
   if (session.web) out.push(...webFindings(session.web));
   if (session.mobile) out.push(...mobileFindings(session.mobile));
 
@@ -183,6 +186,112 @@ export function interactionLeak(session) {
     }
   }
   return worst;
+}
+
+const SEGMENT_ADVICE = {
+  input: 'The main thread was busy when the input arrived. Break up long tasks that run around the interaction, or yield with scheduler.yield().',
+  handlers: 'The event handlers themselves are slow. Do only what the next frame needs in the handler and defer the rest.',
+  script: 'Script after the handlers (promise callbacks, timers) dominates. Move the heavy part off the main thread or split it across frames.',
+  render: 'Style, layout and paint dominate. Render fewer nodes (virtualize long lists), avoid layout thrashing, and use content-visibility for off-screen content.',
+  network: 'The interaction waits on the network. Prefetch on hover, cache the response, or show the result optimistically before it arrives.',
+  idle: 'The main thread sat idle with no request in flight: a timer, debounce or animation delay holds the result back.',
+  other: 'Main-thread work that is not script or rendering (IPC, loading). Record a DevTools trace of the same interaction to see the tasks.',
+  frame: 'Work finished but the frame took long to reach the screen: compositing, raster or GPU. Check for large layers, filters or images decoded on demand.',
+};
+
+export function interactionFindings(session) {
+  const out = [];
+  const records = session.interactions ?? [];
+  const web = new Map();
+  for (const r of records) {
+    if (r.kind !== 'web') continue;
+    if (!web.has(r.label)) web.set(r.label, []);
+    web.get(r.label).push(r);
+  }
+  for (const [label, runs] of web) {
+    const ok = runs.filter((r) => r.available && r.slowest);
+    if (!ok.length) {
+      out.push({ id: 'interaction-unmeasured', severity: 'info', title: `Could not break down "${label}"`, evidence: [runs[runs.length - 1].reason ?? 'no breakdown'] });
+      continue;
+    }
+    const worst = ok.reduce((m, r) => (r.totalMs > m.totalMs ? r : m), ok[0]);
+    const seg = worst.slowest;
+    const order = Object.keys(SEGMENTS);
+    const parts = order.filter((k) => worst.totals[k] >= 0.5).map((k) => `${SEGMENTS[k]} ${formatMs(worst.totals[k])}`);
+    const evidence = [
+      `${worst.frameShown ? 'input → frame shown' : 'input → last main-thread work'} ${formatMs(worst.totalMs)}${ok.length > 1 ? ` (slowest of ${ok.length} runs; median ${formatMs(median(ok.map((r) => r.totalMs)))})` : ''}`,
+      parts.join(' · '),
+    ];
+    if (seg.key === 'network' && worst.requests?.length) {
+      const r = [...worst.requests].sort((a, b) => b.ms - a.ms)[0];
+      evidence.push(`slowest request ${r.method ?? 'GET'} ${r.url} ${formatMs(r.ms)}${r.bytes != null ? `, ${formatBytes(r.bytes)}` : ''}`);
+    }
+    if (['handlers', 'script', 'input'].includes(seg.key) && worst.scripts?.length) {
+      const sc = worst.scripts[0];
+      evidence.push(`longest script ${sc.invoker} ${formatMs(sc.ms)}${sc.source ? ` at ${sc.source}` : ''}`);
+    }
+    if (seg.key === 'render' && worst.render) {
+      evidence.push(`style ${formatMs(worst.render.styleMs)} · layout ${formatMs(worst.render.layoutMs)}${worst.render.layoutObjects ? ` over ${worst.render.layoutObjects} objects` : ''} · paint ${formatMs(worst.render.paintMs)}`);
+    }
+    if (worst.stacks?.available && worst.stacks.hot?.length) {
+      const h = worst.stacks.hot.find((x) => !/^\(/.test(x.symbol)) ?? worst.stacks.hot[0];
+      evidence.push(`hottest JS ${h.symbol}${h.source ? ` (${h.source})` : ''} ${formatMs(h.ms)}`);
+    }
+    const et = worst.eventTiming;
+    if (et) evidence.push(`Event Timing ${formatMs(et.durationMs)} to next paint = ${formatMs(et.inputDelayMs)} input delay + ${formatMs(et.processingMs)} processing + ${formatMs(et.presentationDelayMs)} presentation`);
+    out.push({
+      id: 'interaction-slowest-segment',
+      severity: worst.totalMs > 500 ? 'high' : worst.totalMs > 200 ? 'medium' : 'ok',
+      title: `Slowest segment of "${label}" is ${seg.label}: ${formatMs(seg.ms)}`,
+      metric: seg.ms,
+      label,
+      segment: seg.key,
+      evidence,
+      suggestion: worst.totalMs > 200 ? SEGMENT_ADVICE[seg.key] : undefined,
+    });
+  }
+
+  for (const r of records) {
+    if (r.kind !== 'native' || !r.stacks?.available) continue;
+    const top = r.stacks.hot.filter((h) => h.symbol !== '???').slice(0, 3);
+    if (!top.length) continue;
+    out.push({
+      id: 'interaction-hot-function',
+      severity: top[0].pctOfActive >= 0.3 ? 'medium' : 'info',
+      title: `${shortSymbol(top[0].symbol)} is the hottest function during "${r.label}"`,
+      metric: top[0].pctOfActive,
+      label: r.label,
+      evidence: [
+        ...top.map((h) => `${(h.pctOfActive * 100).toFixed(0)}% self · ${shortSymbol(h.symbol)} (${h.module}, ${h.thread})`),
+        `call stacks sampled ${r.stacks.window} with ${r.stacks.tool}`,
+      ],
+    });
+  }
+
+  const measured = new Set(web.keys());
+  const byLabel = new Map();
+  for (const m of markSummaries((session.marks ?? []).filter((x) => x.source !== 'sherlock'), session.samples)) {
+    if (measured.has(m.label)) continue;
+    const prev = byLabel.get(m.label);
+    if (!prev || m.busyMs > prev.busyMs) byLabel.set(m.label, m);
+  }
+  for (const [label, m] of byLabel) {
+    if (m.busyMs < 250) continue;
+    out.push({
+      id: 'interaction-busy',
+      severity: m.busyMs > 1000 ? 'high' : 'medium',
+      title: `"${label}" keeps the CPU busy for ${formatMs(m.busyMs)}`,
+      metric: m.busyMs,
+      label,
+      evidence: [
+        `CPU ${m.cpuAvgPct.toFixed(0)}% average, ${m.cpuPeakPct.toFixed(0)}% peak while busy${m.settled ? '' : ' (had not settled when the window ended)'}`,
+        m.rssDeltaBytes != null ? `memory ${formatBytes(m.rssBeforeBytes)} → peak ${formatBytes(m.rssPeakBytes)} → ${formatBytes(m.rssAfterBytes)}` : null,
+        `from samples every ~${m.resolutionMs} ms, so the busy time is ± one sample`,
+      ].filter(Boolean),
+      suggestion: 'Mark it again with stacks (sherlock_mark stacks_seconds) to see which functions burn the time.',
+    });
+  }
+  return out;
 }
 
 function webFindings(web) {

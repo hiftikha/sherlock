@@ -37,7 +37,7 @@
 
 ---
 
-Every time an app is slow to start or heavy to run, someone builds a one-off harness for that one repo: launch it, poll some numbers, eyeball a chart, guess. Sherlock replaces the harness. An agent reads the project, works out what it is and how to run it, launches a release build with a ready signal, samples the whole process tree every 100 ms, captures where the startup time went, and keeps watching while you click through the app. Mark an interaction and repeat it, and Sherlock tells you how much memory each one keeps.
+Every time an app is slow to start or heavy to run, someone builds a one-off harness for that one repo: launch it, poll some numbers, eyeball a chart, guess. Sherlock replaces the harness. An agent reads the project, works out what it is and how to run it, launches a release build with a ready signal, samples the whole process tree every 100 ms, captures where the startup time went, and keeps watching while you click through the app. Mark an interaction and repeat it, and Sherlock tells you how much memory each one keeps. On a web page it performs the interaction itself and breaks its latency down end to end, from the input to the frame that shows the result, and names the segment that lags most.
 
 The measuring is a small, dependency-free Node engine built on the tools your OS already ships (`ps`, `footprint`, `sample`, `nettop`, `/proc`, `perf`, `simctl`, `adb`, the Chrome DevTools Protocol). The judgment is Claude: which scenario to run, which numbers matter, which line of your code caused them.
 
@@ -76,6 +76,12 @@ The wizard detects the project, then offers to open Claude Code with Sherlock lo
     <td><sub><b>Startup.</b> Phases from spawn to first output to ready to idle, the ready line drawn through every lane, and the functions that burned the startup time.</sub></td>
     <td><sub><b>Live.</b> The last 60 seconds, with interaction markers dropped through every lane. Memory steps up after each "open doc" and never returns, and Sherlock says so.</sub></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src=".github/assets/interaction.webp" alt="Interaction latency: three runs of open list drawn as segmented bars on the Interactions lane and in a panel below, red input delay, amber event handlers 121 ms, blue network 301 ms, orange script 42 ms, violet style, layout and paint 30 ms, green frame presentation, 506 ms in total; the rail says the slowest segment of open list is network."></td>
+  </tr>
+  <tr>
+    <td colspan="2"><sub><b>Interaction latency.</b> Each click traced from the input to the frame that shows the result, split into input delay, handlers, script, network, rendering and presentation. The network wait is the biggest piece, and the 120 ms handler runs before the request is even sent.</sub></td>
+  </tr>
 </table>
 
 The dashboard is one local page that updates as the app runs. Numbers animate with [NumberFlow](https://number-flow.barvian.me), the right rail collapses (`]`), `m` marks an interaction, and every run is saved as a JSON report plus a standalone HTML page you can send to someone.
@@ -91,9 +97,27 @@ The dashboard is one local page that updates as the app runs. Numbers animate wi
 | **Memory bandwidth** | not exposed without sudo | `perf` LLC misses × 64 B, estimate | — | — | — |
 | **GPU** | whole-GPU utilization (`ioreg`) | — | — | — | — |
 | **Network** | per process (`nettop`) | network namespace | request weight | — | app namespace |
-| **Interactions** | marks + per-interaction memory | same | — | same | same |
+| **Interactions** | marks, CPU busy time and memory per interaction, call stacks around a mark | marks, CPU busy time and memory per interaction | closed-loop latency: input delay → handlers → script → network → style, layout & paint → frame shown | marks + per-interaction CPU and memory | same |
 
 A metric Sherlock can't measure on a target is shown as unavailable with the reason, never as a flat line or a guess.
+
+### Interaction latency
+
+`sherlock_interact` (or `sherlock interact` on the command line) clicks a selector or a point, or presses a key, on a page in headless Chrome, and records a DevTools trace around it. From the trace it splits the time between the input and the frame that shows the result into segments, each measured, none inferred:
+
+| Segment | What fills it |
+|---|---|
+| input delay | the input's timestamp to its first handler starting (Event Timing) |
+| event handlers | `EventDispatch` for the interaction's events |
+| script | promise callbacks, timers and other script after the handlers |
+| network | the main thread idle while a request the interaction sent is in flight |
+| style, layout & paint | `UpdateLayoutTree`, `Layout`, `Paint`, `Commit` |
+| idle | the main thread idle with nothing in flight (timers, debounce) |
+| frame presentation | the last commit to `Display::FrameDisplayed` |
+
+The breakdown is drawn as a segmented bar on the Interactions lane and in an Interaction latency panel, with the slowest request, the longest scripts, layout cost, the Event Timing (INP) numbers for the same input, and optionally the hottest JavaScript from the V8 sampler. The finding reads `Slowest segment of "open list" is network: 301 ms`. Pass `done_selector` (`--done`) to end the interaction when its result appears; otherwise it ends at the frame after the last script-driven update once the network goes quiet.
+
+For native apps, every mark gets a CPU and memory summary (busy time after it, CPU average and peak, memory before, peak and after), and `sherlock_mark` with `stacks_seconds` (`--mark-stacks` in the CLI) samples call stacks during the interaction on macOS.
 
 It works on anything that runs as a process: Rust, Go, Swift, C and C++ binaries, Tauri and Electron apps (the webview and helper processes are in the tree), Node, Python, dev servers, and Rust compiled to WebAssembly in the browser.
 
@@ -152,6 +176,9 @@ sherlock launch --ready-log 'listening on' -- ./target/release/server
 sherlock launch --ready-port 3000 -- npm run dev
 sherlock attach my-app                       # by name or pid
 sherlock web http://localhost:3000/ --throttle 4
+sherlock interact http://localhost:3000/ --click '#open' --label 'open list' --done '#list li' --repeat 3
+sherlock interact http://localhost:3000/ --click '#search' --key a --label 'type in search'
+sherlock launch --mark-stacks 3 -- ./target/release/app   # stacks around each mark (macOS)
 sherlock ios com.example.app                 # the booted Simulator
 sherlock android com.example.app             # a device or emulator
 sherlock detect                              # what is this project?
@@ -164,10 +191,11 @@ While a launch or attach is live, type a label and press enter to mark an intera
 
 - **[`src/platform/host.mjs`](src/platform/host.mjs)** samples a process tree. On macOS: `ps` for CPU time, `footprint` for memory, `ps -M` for threads, `nettop` for network, `ioreg` for the GPU. On Linux: `/proc/<pid>/{stat,status,io,net/dev}` and, when `perf` is allowed, LLC miss counters for memory bandwidth. CPU is computed from cumulative CPU time between samples, so it's exact for short spikes rather than a decayed average.
 - **[`src/launch.mjs`](src/launch.mjs)** launches the app and times its phases: spawn, first output, a ready signal (a log line, a port, a URL) and the CPU going quiet. On macOS a separate warm-up launch captures call stacks from the first instruction with `sample -wait`, because attaching a sampler freezes the process for a few hundred milliseconds and would distort the timed run.
-- **[`src/platform/web.mjs`](src/platform/web.mjs)** drives headless Chrome over the DevTools Protocol with no Puppeteer: navigation timing, paint and LCP observers, a timeline trace for long tasks, runtime metrics, and the browser's own process tree.
+- **[`src/platform/web.mjs`](src/platform/web.mjs)** drives headless Chrome over the DevTools Protocol with no Puppeteer: navigation timing, paint and LCP observers, a timeline trace for long tasks, runtime metrics, and the browser's own process tree. For an interaction it dispatches the input with `Input.dispatchMouseEvent` or `Input.dispatchKeyEvent` inside a trace bracketed by user-timing marks, and [`src/parse/trace.mjs`](src/parse/trace.mjs) turns the trace into segments.
+- **[`src/interaction.mjs`](src/interaction.mjs)** summarizes CPU and memory after every mark and samples call stacks around one.
 - **[`src/platform/mobile.mjs`](src/platform/mobile.mjs)** cold-launches iOS apps with `simctl` and samples the Simulator process on the Mac, and Android apps with `am start -W` and `/proc` over `adb`.
-- **[`src/findings.mjs`](src/findings.mjs)** turns samples into findings: wait-bound vs CPU-bound startup, the hot function, main-thread-bound work, memory each repeated interaction keeps, steady growth, and idle CPU.
-- **[`src/mcp.mjs`](src/mcp.mjs)** and **[`src/tools.mjs`](src/tools.mjs)** expose all of it as 13 MCP tools. The plugin's [`.mcp.json`](.mcp.json) runs it with `node`, no install step.
+- **[`src/findings.mjs`](src/findings.mjs)** turns samples into findings: wait-bound vs CPU-bound startup, the hot function, main-thread-bound work, memory each repeated interaction keeps, the slowest segment of each interaction, CPU busy time after a mark, steady growth, and idle CPU.
+- **[`src/mcp.mjs`](src/mcp.mjs)** and **[`src/tools.mjs`](src/tools.mjs)** expose all of it as 14 MCP tools. The plugin's [`.mcp.json`](.mcp.json) runs it with `node`, no install step.
 - **[`skills/profile/SKILL.md`](skills/profile/SKILL.md)** is the playbook Claude follows for a drill pass. The terminal agent ([`src/agent.mjs`](src/agent.mjs)) uses the same file as its system prompt.
 - **[`ui/`](ui)** is the dashboard: plain HTML, CSS and JavaScript fed by server-sent events from a server bound to `127.0.0.1`.
 
@@ -209,7 +237,8 @@ Sherlock runs only on your machine. It starts the commands you or the agent choo
 - **Startup on macOS is a warm start** when call stacks are on, because the warm-up launch runs first. Pass `--no-stacks` for a launch with nothing before it. Neither is a true cold start after a reboot.
 - **iOS Simulator timings run on your Mac's CPU.** Use them to compare builds, not as device numbers.
 - **Linux call stacks and Android memory bandwidth** aren't wired up yet.
-- **Interactions are marked, not captured.** Sherlock doesn't hook your app's input events; you, the agent or a script mark them. End-to-end interaction latency (input → frame) is the next milestone.
+- **End-to-end interaction latency is web only.** On a page Sherlock performs the input and traces it to the frame. In a native app it doesn't hook input events or frame presentation, so a marked interaction gets CPU busy time, memory and (on macOS) call stacks, not an input → frame breakdown. Busy time comes from 100–250 ms samples, so it's accurate to one sample.
+- **Without `done_selector`, the end of a web interaction is inferred from quiet**: the network idle for 500 ms and the frame after the last script-driven update. A page that animates or polls continuously gets a note saying the end is approximate.
 
 ## Requirements
 
@@ -232,7 +261,7 @@ npm install
 npm test
 ```
 
-The test suite has unit tests for every platform's parsers and integration tests that profile real processes: a Node app, a Rust app built with cargo, a page in headless Chrome, the iOS Simulator and Android through recorded `simctl` and `adb` stand-ins (and real ones when a Simulator is booted or a device is connected), the MCP server, the dashboard and the CLI. CI runs it on macOS and Linux. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The test suite has unit tests for every platform's parsers and integration tests that profile real processes: a Node app, a Rust app built with cargo, a page in headless Chrome (page load and clicked and typed interactions), the iOS Simulator and Android through recorded `simctl` and `adb` stand-ins (and real ones when a Simulator is booted or a device is connected), the MCP server, the dashboard and the CLI. CI runs it on macOS and Linux. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

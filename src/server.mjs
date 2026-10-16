@@ -17,7 +17,7 @@ export async function startDashboard(source, { port = 0, open = false, host = '1
   };
 
   if (live) {
-    for (const type of ['sample', 'mark', 'phase', 'findings', 'status', 'stacks', 'event']) {
+    for (const type of ['sample', 'mark', 'phase', 'findings', 'status', 'stacks', 'event', 'interaction']) {
       source.on(type, (data) => broadcast(type, data));
     }
     source.on('stopped', () => broadcast('session', snapshot()));

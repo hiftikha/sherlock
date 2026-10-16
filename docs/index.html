@@ -186,14 +186,18 @@
   </section>
 
   <section id="interactions">
-    <h2><span class="n">06</span>Interactions and leaks</h2>
+    <h2><span class="n">06</span>Interactions, latency and leaks</h2>
     <p>Mark an interaction just before it happens: from the dashboard (<code>m</code>), by typing a label in the terminal, or by the agent with <code>sherlock_mark</code>. Do the same interaction a few times with the same label. For each repetition Sherlock compares memory just before it with memory just before the next one, and if at least half of them keep memory, it reports how much each one keeps and the total.</p>
-    <div class="note"><p>Sherlock marks interactions; it doesn't hook your app's input events. End-to-end interaction latency, from input to the next frame, is the next milestone.</p></div>
+    <p><b>Latency, end to end, on the web.</b> <code>sherlock_interact</code> clicks a selector or a point, or presses a key, on a page in headless Chrome and records a DevTools trace around it. The time from the input to the frame that shows the result is split into measured segments: input delay (from Event Timing), event handlers, script after them, network (the main thread idle while a request the interaction sent is in flight), style, layout and paint, idle waiting, and frame presentation (to <code>Display::FrameDisplayed</code>). The dashboard draws it as a segmented bar on the Interactions lane, and the finding names the biggest piece: <i>Slowest segment of "open list" is network: 301 ms</i>. Give it a <code>done_selector</code> to end the interaction when its result appears.</p>
+    <p><b>Native.</b> Every mark gets a CPU and memory summary: how long the process tree stayed busy after it, CPU average and peak, and memory before, at the peak and after. <code>sherlock_mark</code> with <code>stacks_seconds</code> samples call stacks during the interaction on macOS.</p>
+    <img src="interaction.webp" alt="Interaction latency: three runs of open list as segmented bars on the Interactions lane and in a panel, with network 301 ms as the slowest segment." style="width:100%;display:block;margin:0 0 8px;border:1px solid var(--rule)">
+    <p class="cap">Each click traced from the input to the frame that shows the result. The network wait is the biggest piece.</p>
+    <div class="note"><p>Input → frame breakdowns are web only for now. Sherlock doesn't hook a native app's input events or frame presentation, so native interactions get busy time, memory and stacks instead, accurate to one 100–250 ms sample.</p></div>
   </section>
 
   <section id="tools">
     <h2><span class="n">07</span>The tools</h2>
-    <p>The plugin's MCP server exposes thirteen tools. Claude calls them; you can also call them from any MCP client with <code>node cli/sherlock.mjs mcp</code>.</p>
+    <p>The plugin's MCP server exposes fourteen tools. Claude calls them; you can also call them from any MCP client with <code>node cli/sherlock.mjs mcp</code>.</p>
     <div class="table"><table>
       <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
       <tbody>
@@ -203,7 +207,8 @@
         <tr><td>sherlock_web</td><td>Page startup in headless Chrome.</td></tr>
         <tr><td>sherlock_ios</td><td>Cold launch in the booted iOS Simulator.</td></tr>
         <tr><td>sherlock_android</td><td>Cold start on a device or emulator.</td></tr>
-        <tr><td>sherlock_mark</td><td>Put an interaction marker on the timeline.</td></tr>
+        <tr><td>sherlock_interact</td><td>Click or type on a web page and break the interaction down from input to frame shown.</td></tr>
+        <tr><td>sherlock_mark</td><td>Put an interaction marker on the timeline; optionally sample call stacks around it.</td></tr>
         <tr><td>sherlock_observe</td><td>Watch for a few seconds and return an updated digest.</td></tr>
         <tr><td>sherlock_stacks</td><td>Sample call stacks right now, during a slow interaction.</td></tr>
         <tr><td>sherlock_dashboard</td><td>Open the live dashboard.</td></tr>
@@ -222,6 +227,7 @@ sherlock launch --ready-log 'listening' -- ./target/release/server
 sherlock launch --ready-port 3000 -- npm run dev
 sherlock attach my-app
 sherlock web http://localhost:3000/ --throttle 4
+sherlock interact http://localhost:3000/ --click '#open' --label 'open list' --done '#list li'
 sherlock ios com.example.app
 sherlock android com.example.app
 sherlock detect
@@ -234,7 +240,7 @@ sherlock install                          # add the plugin to Claude Code</code>
     <h2><span class="n">09</span>How it measures</h2>
     <p><b>Native.</b> On macOS, <code>ps</code> gives cumulative CPU time for the process tree, so CPU is exact between samples rather than a decayed average; <code>footprint</code> gives physical footprint, which counts compressed memory that RSS misses; <code>nettop</code> gives per-process network; <code>ioreg</code> gives whole-GPU utilization. On Linux the same comes from <code>/proc</code>, and memory bandwidth from <code>perf</code> last-level cache misses when the kernel allows it.</p>
     <p><b>Startup stacks.</b> Attaching a sampler freezes a process for a few hundred milliseconds. So on macOS Sherlock runs a warm-up launch with <code>sample -wait</code> attached from the first instruction, keeps its stacks, then times a second, untouched launch. Rust and C++ symbols are demangled.</p>
-    <p><b>Web.</b> Chrome is driven over the DevTools Protocol directly. Long tasks come from a timeline trace, the way Lighthouse counts them, because the browser doesn't buffer long-task entries for observers that register late.</p>
+    <p><b>Web.</b> Chrome is driven over the DevTools Protocol directly. Long tasks come from a timeline trace, the way Lighthouse counts them, because the browser doesn't buffer long-task entries for observers that register late. Interactions are dispatched with <code>Input.dispatchMouseEvent</code> and <code>Input.dispatchKeyEvent</code> inside a trace bracketed by user-timing marks, so the parser knows exactly which window to read.</p>
     <p><b>Mobile.</b> iOS apps run as processes on the Mac inside the Simulator, so Sherlock samples them like native apps. Android uses <code>am start -W</code> for time to first frame and reads <code>/proc</code> over <code>adb</code>.</p>
   </section>
 

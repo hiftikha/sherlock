@@ -2,6 +2,16 @@
 
 All notable changes to Sherlock are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- End-to-end interaction latency on the web: `sherlock_interact` (and `sherlock interact`) clicks a selector or point, or presses a key, in headless Chrome and breaks the interaction down from a DevTools trace into input delay, event handlers, script, network, style/layout/paint, idle and frame presentation, ending at the first displayed frame that shows the result (or at a `done_selector`). It also reports Event Timing (INP) numbers, the requests, the longest scripts, layout cost and, with `stacks`, hot JavaScript from the V8 sampler.
+- A segmented bar per interaction on the dashboard's Interactions lane, an Interaction latency panel, and a terminal bar in the CLI.
+- Findings: the slowest segment of each interaction (`Slowest segment of "open list" is network: 301 ms`), CPU busy time after a mark, and the hottest function during a marked interaction.
+- Native interactions: a CPU and memory summary for every mark, and call stacks around a mark on macOS (`sherlock_mark` `stacks_seconds`, CLI `--mark-stacks`).
+- `sherlock_web` `keep_open` keeps the page open for interactions; the browser closes when the session stops.
+
 ## [0.1.0] - 2026-10-16
 
 The first pass.
