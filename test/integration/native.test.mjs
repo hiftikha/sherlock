@@ -47,8 +47,8 @@ test('launch with a ready port', { skip: !host && 'macOS and Linux only', timeou
 });
 
 test('attach samples a running process and its interaction marks', { skip: !host && 'macOS and Linux only', timeout: 30000 }, async () => {
-  const child = spawn(process.execPath, [APP], { env: { ...process.env, WAIT_MS: '0', BURN_MS: '0', LIFE_MS: '20000' }, stdio: 'ignore' });
-  await sleep(300);
+  const child = spawn(process.execPath, [APP], { env: { ...process.env, WAIT_MS: '0', BURN_MS: '0', LIFE_MS: '20000' }, stdio: ['ignore', 'pipe', 'ignore'] });
+  await new Promise((resolve) => child.stdout.on('data', (d) => String(d).includes('READY') && resolve()));
   const session = await attachNative({ pid: child.pid, intervalMs: 150 });
   await sleep(600);
   for (let i = 0; i < 3; i++) {
