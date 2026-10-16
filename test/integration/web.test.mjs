@@ -115,7 +115,7 @@ test('web: closed-loop breakdown of a click, a key press and a done condition', 
     const j = session.toJSON();
     assert.equal(j.interactions.length, 4);
     const f = j.findings.find((x) => x.id === 'interaction-slowest-segment' && x.label === 'open list');
-    assert.match(f.title, /^Slowest segment of "open list" is .+: \d+ ms$/);
+    assert.match(f.title, /^Slowest segment of "open list" is .+: (\d+ ms|\d+\.\d\d s)$/);
     assert.ok(j.findings.some((x) => x.id === 'interaction-slowest-segment' && x.label === 'type'));
   } finally {
     session.stop();
@@ -131,7 +131,7 @@ test('sherlock_interact: opens the url, repeats, and refuses native sessions', {
     const out = await callTool('sherlock_interact', { url: server.url, selector: '#open', label: 'open list', repeat: 2 });
     id = out.session;
     assert.equal(out.runs.length, 2);
-    assert.match(out.runs[0].slowest, /^[a-z ,&()-]+ \d+ ms \(\d+%\)$/);
+    assert.match(out.runs[0].slowest, /^[a-z ,&()-]+ (\d+ ms|\d+\.\d\d s) \(\d+%\)$/);
     assert.ok(out.runs[0].breakdown.some((b) => b.startsWith('event handlers: ')));
     assert.match(out.finding.title, /^Slowest segment of "open list" is /);
     await assert.rejects(callTool('sherlock_interact', { session: id, selector: '#open', label: 'again', done_selector: '#done' }), /already matches/);
