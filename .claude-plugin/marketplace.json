@@ -1,0 +1,17 @@
+{
+  "name": "sherlock",
+  "owner": {
+    "name": "Haroon Iftikhar",
+    "url": "https://github.com/hiftikha"
+  },
+  "metadata": {
+    "description": "Sherlock, an agentic profiler for native, desktop, web and mobile apps."
+  },
+  "plugins": [
+    {
+      "name": "sherlock",
+      "source": "./",
+      "description": "Measure startup, CPU, memory, memory bandwidth, GPU and network live, and get a diagnosis tied to your code."
+    }
+  ]
+}

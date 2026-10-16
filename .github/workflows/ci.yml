@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install
+        run: npm install --no-package-lock
+
+      - name: Unit tests
+        run: node --test "test/unit/*.test.mjs"
+
+      - name: Integration tests (native, Rust, web, iOS, Android, MCP, CLI)
+        run: node --test --test-concurrency=1 "test/integration/*.test.mjs"
+
+      - name: CLI smoke test
+        run: |
+          node cli/sherlock.mjs --version
+          node cli/sherlock.mjs detect test/fixtures/rust-app --json
+          node cli/sherlock.mjs launch --exit --json --no-stacks --ready-log '^READY' -- node test/fixtures/apps/slow-start.mjs
+
+  plugin:
+    name: Plugin manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: claude plugin validate
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate .
+          claude plugin validate .claude-plugin/plugin.json
+          claude plugin validate skills

@@ -1,0 +1,3 @@
+sherlock-fixture [9299]: 64-bit    Footprint: 101777792 B (16384 bytes per page)
+zsh [56056]: 64-bit    Footprint: 2277760 B (16384 bytes per page)
+Summary Footprint: 104022784 B

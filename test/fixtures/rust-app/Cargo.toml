@@ -1,0 +1,10 @@
+[package]
+name = "sherlock-fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+
+[profile.release]
+debug = 1

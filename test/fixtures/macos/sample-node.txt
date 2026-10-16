@@ -1,0 +1,128 @@
+Analysis of sampling node (pid 20623) every 1 millisecond
+Process:         node [20623]
+Path:            /Users/USER/*/node
+Load Address:    0x102ed4000
+Identifier:      node
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  zsh [20621]
+Target Type:     live task
+
+Date/Time:       2026-10-16 03:17:56.799 -0400
+Launch Time:     2026-10-16 03:17:48.964 -0400
+OS Version:      macOS 26.7 (25G229)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         45.1M
+Physical footprint (peak):  49.8M
+Idle exit:                  untracked
+----
+
+Call graph:
+    854 Thread_14054535   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 854 start  (in dyld) + 6992  [0x185b104e4]
+    +   854 node::Start(int, char**)  (in node) + 600  [0x102f9c9ec]
+    +     854 node::NodeMainInstance::Run()  (in node) + 276  [0x1030366ac]
+    +       854 node::SpinEventLoopInternal(node::Environment*)  (in node) + 256  [0x102ed9a78]
+    +         834 uv_run  (in node) + 408  [0x103e2509c]
+    +         ! 834 uv__io_poll  (in node) + 784  [0x103e38bf4]
+    +         !   834 kevent  (in libsystem_kernel.dylib) + 8  [0x185e9dfc4]
+    +         20 uv_run  (in node) + 1304  [0x103e2541c]
+    +           20 uv__run_timers  (in node) + 116  [0x103e219dc]
+    +             20 node::Environment::RunTimers(uv_timer_s*)  (in node) + 552  [0x102f6fe1c]
+    +               20 v8::Function::Call(v8::Isolate*, v8::Local<v8::Context>, v8::Local<v8::Value>, int, v8::Local<v8::Value>*)  (in node) + 492  [0x1031e5ff4]
+    +                 20 v8::internal::Execution::Call(v8::internal::Isolate*, v8::internal::DirectHandle<v8::internal::Object>, v8::internal::DirectHandle<v8::internal::Object>, v8::base::Vector<v8::internal::DirectHandle<v8::internal::Object> const>)  (in node) + 120  [0x103370144]
+    +                   20 v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&)  (in node) + 1652  [0x1033707e0]
+    +                     20 Builtins_JSEntry  (in node) + 176  [0x103e46570]
+    +                       20 Builtins_JSEntryTrampoline  (in node) + 172  [0x103e468cc]
+    +                         20 ???  (in <unknown binary>)  [0x126ac5eb0]
+    +                           20 ???  (in <unknown binary>)  [0x126ac73c8]
+    +                             12 ???  (in <unknown binary>)  [0x126ac85c0]
+    +                             : 12 Builtins_CEntry_Return1_ArgvOnStack_NoBuiltinExit  (in node) + 84  [0x103ee5f74]
+    +                             :   12 v8::internal::Runtime_GrowArrayElements(int, unsigned long*, v8::internal::Isolate*)  (in node) + 224  [0x103880bd4]
+    +                             :     12 v8::internal::(anonymous namespace)::ElementsAccessorBase<v8::internal::(anonymous namespace)::FastPackedSmiElementsAccessor, v8::internal::(anonymous namespace)::ElementsKindTraits<(v8::internal::ElementsKind)0>>::GrowCapacity(v8::internal::DirectHandle<v8::internal::JSObject>, unsigned int)  (in node) + 236  [0x1035d9464]
+    +                             :       12 v8::internal::(anonymous namespace)::ElementsAccessorBase<v8::internal::(anonymous namespace)::FastPackedSmiElementsAccessor, v8::internal::(anonymous namespace)::ElementsKindTraits<(v8::internal::ElementsKind)0>>::ConvertElementsWithCapacity(v8::internal::DirectHandle<v8::internal::JSObject>, v8::internal::DirectHandle<v8::internal::FixedArrayBase>, v8::internal::ElementsKind, unsigned int, unsigned int, unsigned int)  (in node) + 164  [0x1035da94c]
+    +                             :         6 v8::internal::FactoryBase<v8::internal::Factory>::NewFixedArray(int, v8::internal::AllocationType)  (in node) + 80  [0x1033ea47c]
+    +                             :         | 5 v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment)  (in node) + 2160  [0x10341ec38]
+    +                             :         | + 5 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags)  (in node) + 748  [0x103429f0c]
+    +                             :         | +   5 PushAllRegistersAndIterateStack  (in node) + 40  [0x103df5664]
+    +                             :         | +     5 heap::base::Stack::SetMarkerAndCallbackImpl<v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags)::$_1>(heap::base::Stack*, void*, void const*)  (in node) + 40  [0x1034400cc]
+    +                             :         | +       5 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags)::$_1::operator()() const  (in node) + 1188  [0x103440588]
+    +                             :         | +         5 v8::internal::Heap::PerformGarbageCollection(v8::internal::GarbageCollector, v8::internal::GarbageCollectionReason, char const*)  (in node) + 912  [0x10342db6c]
+    +                             :         | +           5 v8::internal::Heap::Scavenge()  (in node) + 388  [0x10342e694]
+    +                             :         | +             5 v8::internal::ScavengerCollector::CollectGarbage()  (in node) + 5016  [0x1034b2934]
+    +                             :         | +               5 v8::internal::NewLargeObjectSpace::FreeDeadObjects(std::function<bool (v8::internal::Tagged<v8::internal::HeapObject>)> const&)  (in node) + 288  [0x10344916c]
+    +                             :         | +                 5 v8::internal::MemoryAllocator::DeleteMemoryChunk(v8::internal::MutablePageMetadata*)  (in node) + 88  [0x1034869c0]
+    +                             :         | +                   5 v8::internal::VirtualMemory::~VirtualMemory()  (in node) + 96  [0x103907858]
+    +                             :         | +                     5 v8::base::PageAllocator::FreePages(void*, unsigned long)  (in node) + 20  [0x1048a2ac0]
+    +                             :         | +                       5 v8::base::OS::Free(void*, unsigned long)  (in node) + 16  [0x1048a7188]
+    +                             :         | +                         5 __munmap  (in libsystem_kernel.dylib) + 8  [0x185e9b728]
+    +                             :         | 1 v8::internal::Factory::AllocateRaw(int, v8::internal::AllocationType, v8::internal::AllocationAlignment)  (in node) + 500  [0x1033ffdd4]
+    +                             :         |   1 v8::internal::NewLargeObjectSpace::AllocateRaw(v8::internal::LocalHeap*, int)  (in node) + 56  [0x103448e60]
+    +                             :         |     1 v8::internal::Heap::CanExpandOldGeneration(unsigned long) const  (in node) + 272  [0x1034253b8]
+    +                             :         |       1 v8::internal::LargeObjectSpace::SizeOfObjects() const  (in node) + 0  [0x1034498bc]
+    +                             :         6 v8::internal::FactoryBase<v8::internal::Factory>::NewFixedArray(int, v8::internal::AllocationType)  (in node) + 264  [0x1033ea534]
+    +                             4 ???  (in <unknown binary>)  [0x126ac84ec]
+    +                             1 ???  (in <unknown binary>)  [0x126ac8494]
+    +                             1 ???  (in <unknown binary>)  [0x126ac84a0]
+    +                             1 ???  (in <unknown binary>)  [0x126ac84a8]
+    +                             1 ???  (in <unknown binary>)  [0x126ac84c8]
+    854 Thread_14054539
+    + 854 thread_start  (in libsystem_pthread.dylib) + 8  [0x185ed6c1c]
+    +   854 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x185edbc58]
+    +     854 node::WorkerThreadsTaskRunner::DelayedTaskScheduler::Run()  (in node) + 352  [0x10306f49c]
+    +       854 uv_run  (in node) + 408  [0x103e2509c]
+    +         854 uv__io_poll  (in node) + 784  [0x103e38bf4]
+    +           854 kevent  (in libsystem_kernel.dylib) + 8  [0x185e9dfc4]
+    854 Thread_14054540: V8Worker
+    + 854 thread_start  (in libsystem_pthread.dylib) + 8  [0x185ed6c1c]
+    +   854 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x185edbc58]
+    +     854 node::(anonymous namespace)::PlatformWorkerThread(void*)  (in node) + 472  [0x10306cb6c]
+    +       854 node::TaskQueue<node::TaskQueueEntry>::Locked::BlockingPop()  (in node) + 64  [0x10306f6c0]
+    +         854 uv_cond_wait  (in node) + 40  [0x103e33cc4]
+    +           854 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x185edc128]
+    +             854 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x185e9b50c]
+    854 Thread_14054541: V8Worker
+    + 854 thread_start  (in libsystem_pthread.dylib) + 8  [0x185ed6c1c]
+    +   854 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x185edbc58]
+    +     854 node::(anonymous namespace)::PlatformWorkerThread(void*)  (in node) + 472  [0x10306cb6c]
+    +       854 node::TaskQueue<node::TaskQueueEntry>::Locked::BlockingPop()  (in node) + 64  [0x10306f6c0]
+    +         854 uv_cond_wait  (in node) + 40  [0x103e33cc4]
+    +           854 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x185edc128]
+    +             854 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x185e9b50c]
+    854 Thread_14054542: V8Worker
+    + 854 thread_start  (in libsystem_pthread.dylib) + 8  [0x185ed6c1c]
+    +   854 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x185edbc58]
+    +     854 node::(anonymous namespace)::PlatformWorkerThread(void*)  (in node) + 472  [0x10306cb6c]
+    +       854 node::TaskQueue<node::TaskQueueEntry>::Locked::BlockingPop()  (in node) + 64  [0x10306f6c0]
+    +         854 uv_cond_wait  (in node) + 40  [0x103e33cc4]
+    +           854 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x185edc128]
+    +             854 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x185e9b50c]
+    854 Thread_14054543: V8Worker
+    + 854 thread_start  (in libsystem_pthread.dylib) + 8  [0x185ed6c1c]
+    +   854 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x185edbc58]
+    +     854 node::(anonymous namespace)::PlatformWorkerThread(void*)  (in node) + 472  [0x10306cb6c]
+    +       854 node::TaskQueue<node::TaskQueueEntry>::Locked::BlockingPop()  (in node) + 64  [0x10306f6c0]
+    +         854 uv_cond_wait  (in node) + 40  [0x103e33cc4]
+    +           854 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x185edc128]
+    +             854 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x185e9b50c]
+    854 Thread_14054544: SignalInspector
+      854 thread_start  (in libsystem_pthread.dylib) + 8  [0x185ed6c1c]
+        854 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x185edbc58]
+          854 node::inspector::(anonymous namespace)::StartIoThreadMain(void*)  (in node) + 56  [0x10313c920]
+            854 uv_sem_wait  (in node) + 24  [0x103e33b40]
+              854 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x185e97bb0]
+
+Total number in stack (recursive counted multiple, when >=5):
+        6       _pthread_start  (in libsystem_pthread.dylib) + 136  [0x185edbc58]
+        6       thread_start  (in libsystem_pthread.dylib) + 8  [0x185ed6c1c]
+
+Sort by top of stack, same collapsed (when >= 5):
+        __psynch_cvwait  (in libsystem_kernel.dylib)        3416
+        kevent  (in libsystem_kernel.dylib)        1688
+        semaphore_wait_trap  (in libsystem_kernel.dylib)        854
+        v8::internal::FactoryBase<v8::internal::Factory>::NewFixedArray(int, v8::internal::AllocationType)  (in node)        6
+        __munmap  (in libsystem_kernel.dylib)        5
+

@@ -1,0 +1,14 @@
+{
+  "name": "sherlock",
+  "displayName": "Sherlock",
+  "version": "0.1.0",
+  "description": "An agentic profiler. Launches or attaches to your app, measures startup, CPU, memory, memory bandwidth, GPU and network live on one timeline, and explains where the time and memory went.",
+  "author": {
+    "name": "Haroon Iftikhar",
+    "url": "https://github.com/hiftikha"
+  },
+  "homepage": "https://skills.wheresryan.sh/sherlock",
+  "repository": "https://github.com/hiftikha/sherlock",
+  "license": "MIT",
+  "keywords": ["profiler", "performance", "startup", "memory", "cpu", "rust", "tauri", "electron", "ios", "android", "web"]
+}

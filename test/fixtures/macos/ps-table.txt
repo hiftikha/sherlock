@@ -1,0 +1,12 @@
+    1     0 118:50.87  18224 /sbin/launchd
+  343     1  62:14.57  21520 /usr/libexec/logd
+  345     1   0:54.35  10832 /usr/libexec/UserEventAgent
+  347     1  91:41.06   7104 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/FSEvents.framework/Versions/A/Support/fseventsd
+  348     1   1:36.75   8752 /System/Library/PrivateFrameworks/MediaRemote.framework/Support/mediaremoted
+  351     1   0:28.98   7120 /usr/sbin/systemstats
+  355     1   1:21.77   9024 /usr/libexec/configd
+  357     1   2:01.50   9024 /System/Library/CoreServices/powerd.bundle/powerd
+  358     1   0:00.06   2656 /usr/libexec/IOMFB_bics_daemon
+  362     1   0:06.90   5600 /usr/libexec/remoted
+  366     1   0:00.04   1664 /System/Library/PrivateFrameworks/CoreSpeech.framework/corespeechd_system
+  368     1   0:10.24   2944 /usr/libexec/watchdogd

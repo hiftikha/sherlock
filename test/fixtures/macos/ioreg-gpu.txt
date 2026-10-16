@@ -1,0 +1,1 @@
+      "PerformanceStatistics" = {"In use system memory (driver)"=0,"Alloc system memory"=19143016448,"Tiler Utilization %"=49,"recoveryCount"=0,"lastRecoveryTime"=0,"Renderer Utilization %"=49,"TiledSceneBytes"=1310720,"Device Utilization %"=49,"SplitSceneCount"=0,"Allocated PB Size"=266207232,"In use system memory"=2760835072}

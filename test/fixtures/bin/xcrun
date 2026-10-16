@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+import { spawn } from 'node:child_process';
+const args = process.argv.slice(2);
+if (args[0] !== 'simctl') process.exit(1);
+const sub = args[1];
+if (sub === 'list') {
+  process.stdout.write(JSON.stringify({ devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-26-4': [{ udid: 'FAKE-UDID', name: 'iPhone Fake', state: 'Booted' }] } }));
+} else if (sub === 'terminate') {
+  process.exit(0);
+} else if (sub === 'launch') {
+  const bundle = args[3];
+  const app = spawn(process.execPath, ['-e', 'const e=Date.now()+300;let x=0;while(Date.now()<e)x++;const k=[Buffer.alloc(32*1024*1024,1)];setTimeout(()=>k.length,4000)'], { detached: true, stdio: 'ignore' });
+  app.unref();
+  process.stdout.write(`${bundle}: ${app.pid}\n`);
+}

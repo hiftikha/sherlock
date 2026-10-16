@@ -1,0 +1,24 @@
+name: Bug report
+description: Sherlock measured something wrong, crashed, or couldn't profile your app.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: macOS 15.4 arm64 · Node 24 · Rust/Tauri app
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report
+      description: Paste `sherlock ... --json` output or attach the `.sherlock/*.json` report if you can share it.
+      render: json

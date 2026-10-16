@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === '-s') args.splice(0, 2);
+const PID = 31337;
+const out = (s) => process.stdout.write(s);
+const t = Math.floor(Date.now() / 10);
+if (args[0] === 'devices') out('List of devices attached\nemulator-5554\tdevice\n\n');
+else if (args[0] === 'shell') {
+  const cmd = args.slice(1).join(' ');
+  if (cmd.startsWith('cmd package resolve-activity')) out('priority=0 preferredOrder=0 match=0x108000\ncom.fake.app/.MainActivity\n');
+  else if (cmd.startsWith('am force-stop')) out('');
+  else if (cmd.startsWith('am start -W')) out('Starting: Intent { cmp=com.fake.app/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.fake.app/.MainActivity\nTotalTime: 842\nWaitTime: 860\nComplete\n');
+  else if (cmd.startsWith('pidof')) out(`${PID}\n`);
+  else if (cmd.startsWith('dumpsys meminfo')) out(' App Summary\n           Java Heap:     8000\n         Native Heap:    12000\n            Graphics:     6000\n               TOTAL PSS:    41000            TOTAL RSS:    90000\n');
+  else if (cmd.startsWith(`cat /proc/${PID}/stat`)) {
+    out(`${PID} (com.fake.app) S 600 600 0 0 -1 1077936448 5000 0 0 0 ${Math.floor(t / 4)} ${Math.floor(t / 20)} 0 0 10 -10 23 0 100 1000000 20000 18446744073709551615 1 1 0 0 0 0 4612 1 1073775864 0 0 0 17 2 0 0 0 0 0\n`);
+    out(`Name:\tcom.fake.app\nVmHWM:\t  180000 kB\nVmRSS:\t  ${150000 + (t % 1000)} kB\nThreads:\t23\n`);
+    out(`Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n wlan0: ${t * 3}     10    0    0    0     0          0         0 ${t}      10    0    0    0     0       0          0\n`);
+  }
+}

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sherlock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Ccircle cx='7.5' cy='7.5' r='5.5' fill='none' stroke='%23FFB224' stroke-width='2'/%3E%3Cline x1='11.6' y1='11.6' x2='16' y2='16' stroke='%23FFB224' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="7.5" cy="7.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><line x1="11.6" y1="11.6" x2="16" y2="16" stroke="currentColor" stroke-width="2"/></svg>
+    <span>sherlock</span>
+  </div>
+  <div class="meta mono" id="meta"></div>
+  <div class="spacer"></div>
+  <div class="seg mono" role="tablist" aria-label="Time window">
+    <button id="view-startup" role="tab">Startup</button>
+    <button id="view-all" class="on" role="tab">Full run</button>
+    <button id="view-live" role="tab">Last 60s</button>
+  </div>
+  <div class="status mono" id="status"><i></i><span>CONNECTING</span></div>
+  <button class="rail-toggle mono" id="rail-toggle" aria-expanded="true" aria-controls="rail" title="Toggle Sherlock's read (])">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="none" stroke="currentColor"/><line x1="9" y1="1" x2="9" y2="13" stroke="currentColor"/></svg>
+    <span>Read</span>
+  </button>
+</header>
+
+<div class="body">
+  <main class="main" id="main">
+    <section class="hero">
+      <div class="hero-left">
+        <div class="label mono" id="hero-label">—</div>
+        <div class="hero-row">
+          <span class="hero-num" id="hero-num">—</span>
+          <span class="hero-delta mono" id="hero-delta"></span>
+        </div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+    </section>
+
+    <section class="timeline" id="timeline">
+      <div class="axis lane-row">
+        <div class="lane-label mono label">Timeline</div>
+        <div class="lane-track" id="axis"></div>
+      </div>
+      <div id="lanes"></div>
+      <div class="overlay" id="overlay"></div>
+      <div class="cursor" id="cursor" hidden><div class="cursor-tip mono" id="cursor-tip"></div></div>
+    </section>
+
+    <section class="panels" id="panels"></section>
+  </main>
+
+  <aside class="rail" id="rail" aria-label="Sherlock's read">
+    <div class="rail-inner">
+      <div class="rail-head">
+        <div class="label mono accent">Sherlock's read</div>
+        <div class="mono muted small" id="rail-count"></div>
+      </div>
+      <h2 class="headline" id="headline">Watching…</h2>
+      <div id="notes"></div>
+      <ol class="findings" id="findings"></ol>
+      <div class="actions">
+        <form class="mark-form" id="mark-form">
+          <input class="mono" id="mark-label" placeholder="Mark an interaction (m)" maxlength="80" autocomplete="off">
+          <button class="btn primary" type="submit">Mark</button>
+        </form>
+        <div class="row">
+          <button class="btn" id="stop">Stop</button>
+          <button class="btn" id="export">Export JSON</button>
+        </div>
+        <p class="mono muted small" id="caps"></p>
+      </div>
+    </div>
+  </aside>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

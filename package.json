@@ -1,0 +1,60 @@
+{
+  "name": "sherlock-profiler",
+  "version": "0.1.0",
+  "description": "An agentic profiler. Sherlock launches or attaches to your app, measures startup, CPU, memory, memory bandwidth, GPU and network live, and tells you where the time and memory went.",
+  "type": "module",
+  "bin": {
+    "sherlock": "cli/sherlock.mjs",
+    "sherlock-profiler": "cli/sherlock.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "cli",
+    "src",
+    "ui",
+    "skills",
+    ".claude-plugin",
+    ".mcp.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    "test:unit": "node --test \"test/unit/*.test.mjs\"",
+    "start": "node cli/sherlock.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  },
+  "keywords": [
+    "profiler",
+    "startup",
+    "performance",
+    "memory",
+    "cpu",
+    "claude",
+    "claude-code",
+    "agent",
+    "mcp",
+    "rust",
+    "tauri",
+    "electron",
+    "ios",
+    "android"
+  ],
+  "author": "Haroon Iftikhar (https://github.com/hiftikha)",
+  "license": "MIT",
+  "homepage": "https://skills.wheresryan.sh/sherlock",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiftikha/sherlock.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hiftikha/sherlock/issues"
+  }
+}

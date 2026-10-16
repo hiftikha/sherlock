@@ -1,0 +1,15 @@
+name: Platform or metric request
+description: Ask Sherlock to support a new platform, metric or kind of app.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What should Sherlock measure, and on what?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How would it get the number?
+      description: The OS tool, API or counter you'd use, if you know one.
